@@ -11,6 +11,7 @@ enum DemoShot: String {
     case full
     case sources
     case newTrack = "new-track"
+    case search
     case settings
 
     /// The shot asked for on the command line, if any. (`-demo full` lands in UserDefaults'
@@ -20,7 +21,20 @@ enum DemoShot: String {
     /// Shuffle on, repeat off, so both button states show.
     static let modes = PlaybackModes(shuffle: true, repeatMode: .off)
 
+    /// Made-up Music library results, for the search shot.
+    static let searchText = "neon"
+    static let searchResults = [
+        SearchResult(id: "1", title: "Neon Tides", artist: "Lumen Drive"),
+        SearchResult(id: "2", title: "Neon Skyline", artist: "The Low Orbit"),
+        SearchResult(id: "3", title: "Under Neon Rain", artist: "Aurora Bay"),
+    ]
+
     var update: SessionsUpdate {
+        if self == .search {
+            let music = Self.session("com.apple.Music", "Glass Gardens", "Aurora Bay", playing: true,
+                                     duration: 198, elapsed: 40, art: 3)
+            return SessionsUpdate(sessions: [music], electedBundleID: music.id)
+        }
         let spotify = Self.session("com.spotify.client", "Neon Tides", "Lumen Drive", playing: true,
                                    duration: 222, elapsed: 81, art: 1)
         guard self == .sources else {

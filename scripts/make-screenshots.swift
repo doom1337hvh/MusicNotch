@@ -39,6 +39,7 @@ let shots = [
     Shot(name: "full"),
     Shot(name: "sources"),
     Shot(name: "new-track"),
+    Shot(name: "search"),
     Shot(name: "settings", arguments: ["-settingsTab", "1"], isSettings: true),
 ]
 

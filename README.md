@@ -27,6 +27,7 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 - **Three styles:** Minimal widens the notch with skip buttons. Compact opens a small panel. Full shows the artwork, title, a progress bar and all the controls.
 - **Seek** by dragging the progress bar.
 - **Shuffle, repeat and volume** for Spotify and Apple Music.
+- **Search:** find a song in your Music library and play it right from the notch, or send a search to Spotify, YouTube or SoundCloud.
 - **Several apps at once:** if Spotify is playing and a YouTube video is paused, the notch shows the one that's playing. The open panel has an icon for each app, so you can switch, and the controls reach apps in the background too.
 - **New-track peek:** when the song changes, the notch briefly shows it.
 - **Keyboard shortcuts** for opening the notch, play/pause and skipping, in any app.
@@ -56,6 +57,11 @@ Everything above can be switched off or changed in Settings.
 <p align="center">
   <img src="docs/screenshots/sources.png" width="820" alt="The open notch with Spotify, Chrome and Music icons beside the camera"><br>
   <sub><b>Several apps:</b> each app with media gets an icon beside the camera; click one to switch.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/search.png" width="820" alt="The search field in the notch, with three songs from the Music library"><br>
+  <sub><b>Search:</b> find a song in your Music library and play it without leaving the notch.</sub>
 </p>
 
 <p align="center">
@@ -100,7 +106,7 @@ MusicNotch works without any permissions. Each one below is only requested when 
 
 | Permission | Asked when | What it's for |
 |---|---|---|
-| **Automation** (Spotify, Music) | You first use the volume, shuffle or repeat button for that app | Reading and changing that app's own volume, shuffle and repeat through AppleScript. Nothing else is sent to the app. |
+| **Automation** (Spotify, Music) | You first use the volume, shuffle or repeat button, or search Music | Reading and changing that app's own volume, shuffle and repeat, and searching your Music library, through AppleScript. Nothing else is sent to the app. |
 | **Input Monitoring** | You turn on **Hide while swiping** | Noticing the moment a three-finger swipe between desktops begins. MusicNotch's listener only receives the Dock's swipe gesture: no keystrokes, no clicks, nothing else. |
 | **Login Items** | You turn on **Launch at login** | Starting MusicNotch when you log in. |
 
@@ -129,7 +135,9 @@ Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by ope
 - **Open on:** Hover (default) or Click.
 - **Only open from the camera** (on by default): the closed notch's sides let clicks through to the menu bar, and only the camera area opens it.
 
-*In the open notch*: album artwork, the progress bar (drag it to seek), shuffle and repeat buttons (for Spotify and Music), and whether clicking the artwork opens the playing app.
+*In the open notch*: album artwork, the progress bar (drag it to seek), shuffle and repeat buttons (for Spotify and Music), the search button, and whether clicking the artwork opens the playing app.
+
+**Search** (the 🔍 in the Compact and Full panels) depends on the app. Music shows matching songs from your library right in the notch: click one, or press Return for the top result. Spotify, YouTube and SoundCloud don't let other apps see their results, so pressing Return opens their own search with what you typed. A browser tab searches YouTube. Esc closes the search.
 
 **Animations**
 - **Open animation:** Bouncy (default), Pop, Blur or Instant.

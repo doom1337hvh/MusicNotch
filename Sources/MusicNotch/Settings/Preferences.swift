@@ -123,6 +123,7 @@ final class Preferences {
         static let showTrackPeek = "showTrackPeek"
         static let showBesideNotch = "showBesideNotch"
         static let showShuffleRepeat = "showShuffleRepeat"
+        static let showSearch = "showSearch"
         static let hideInFullScreen = "hideInFullScreen"
         static let openFromCameraOnly = "openFromCameraOnly"
         static let showOnExternalDisplays = "showOnExternalDisplays"
@@ -173,6 +174,10 @@ final class Preferences {
     /// Shuffle and repeat buttons in the open panel, for apps that support them (Spotify, Music).
     var showShuffleRepeat: Bool {
         didSet { defaults.set(showShuffleRepeat, forKey: Key.showShuffleRepeat) }
+    }
+    /// A search button in the Compact and Full panels, for apps that can be searched.
+    var showSearch: Bool {
+        didSet { defaults.set(showSearch, forKey: Key.showSearch) }
     }
     /// Only the camera area opens the closed notch; the parts beside it let the pointer
     /// through to the menu bar.
@@ -260,6 +265,7 @@ final class Preferences {
         showTrackPeek = bool(Key.showTrackPeek, true)
         showBesideNotch = bool(Key.showBesideNotch, true)
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
+        showSearch = bool(Key.showSearch, true)
         openFromCameraOnly = bool(Key.openFromCameraOnly, true)
         hideInFullScreen = (defaults.object(forKey: Key.hideInFullScreen) as? Int)
             .flatMap(FullScreenHiding.init(rawValue:)) ?? .playingApp

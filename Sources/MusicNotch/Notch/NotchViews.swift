@@ -38,17 +38,22 @@ struct NotchRootView: View {
                     let volume = volumeControl(for: snapshot)
                     let seek = seekControl(for: snapshot, canControl: sources.canControl)
                     let modes = modesControl(for: snapshot)
+                    let search = SearchControl(
+                        target: prefs.showSearch ? SearchTarget.forApp(of: snapshot) : nil,
+                        search: state.search,
+                        send: { [state] event in state.onSearch?(event) }
+                    )
                     Group {
                         if state.isTrackPeek {
                             TrackPeekView(snapshot: snapshot, prefs: prefs, geometry: geometry)
                         } else if compact {
                             CompactView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
                                         sources: sources, volume: volume, seek: seek, modes: modes,
-                                        panelWidth: state.expandedSize.width)
+                                        search: search, panelWidth: state.expandedSize.width)
                         } else {
                             ExpandedView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
                                          sources: sources, volume: volume, seek: seek, modes: modes,
-                                         panelWidth: state.expandedSize.width)
+                                         search: search, panelWidth: state.expandedSize.width)
                         }
                     }
                     .frame(width: state.expandedSize.width, height: state.expandedSize.height, alignment: .top)
@@ -389,11 +394,19 @@ private struct ExpandedView: View {
     let volume: VolumeControl
     let seek: SeekControl
     let modes: ModesControl
+    let search: SearchControl
     let panelWidth: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
             TopBand(geometry: geometry, panelWidth: panelWidth, sources: sources, select: actions.selectSource)
+            if let open = search.search {
+                SearchPanelView(search: open, send: search.send)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+                    .padding(.bottom, 14)
+                    .transition(.opacity)
+            } else {
             VStack(spacing: 14) {
                 HStack(spacing: 12) {
                     ArtworkView(artwork: prefs.effectiveArtwork ? snapshot.artwork : nil, size: 56, cornerRadius: 10)
@@ -446,6 +459,11 @@ private struct ExpandedView: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
+                .overlay(alignment: .leading) {
+                    if search.isAvailable {
+                        SearchButton(search: search, size: 13)
+                    }
+                }
                 .overlay(alignment: .trailing) {
                     if volume.isSupported {
                         VolumeButton(volume: volume, size: 13)
@@ -459,6 +477,8 @@ private struct ExpandedView: View {
             .padding(.horizontal, 30)
             .padding(.top, 12)
             .padding(.bottom, 16)
+            .transition(.opacity)
+            }
         }
     }
 }
@@ -510,11 +530,19 @@ private struct CompactView: View {
     let volume: VolumeControl
     let seek: SeekControl
     let modes: ModesControl
+    let search: SearchControl
     let panelWidth: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
             TopBand(geometry: geometry, panelWidth: panelWidth, sources: sources, select: actions.selectSource)
+            if let open = search.search {
+                SearchPanelView(search: open, send: search.send)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 12)
+                    .padding(.bottom, 14)
+                    .transition(.opacity)
+            } else {
             VStack(spacing: 8) {
                 HStack(spacing: 10) {
                     ArtworkView(artwork: prefs.effectiveArtwork ? snapshot.artwork : nil, size: 40, cornerRadius: 8)
@@ -557,6 +585,10 @@ private struct CompactView: View {
                         }
                         .transition(.opacity)
                     }
+                    // Keep `NotchGeometry.compactSize` in sync with these buttons' widths.
+                    if search.isAvailable {
+                        SearchButton(search: search, size: 11)
+                    }
                     if volume.isSupported {
                         VolumeButton(volume: volume, size: 11)
                     }
@@ -574,6 +606,8 @@ private struct CompactView: View {
             .padding(.horizontal, 18)
             .padding(.top, 10)
             .padding(.bottom, 12)
+            .transition(.opacity)
+            }
         }
     }
 }

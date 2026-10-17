@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let scripts = AppleScriptRunner()
     private lazy var appVolume = AppVolume(scripts: scripts)
     private lazy var playbackModes = AppPlaybackModes(scripts: scripts)
+    private lazy var mediaSearch = MediaSearch(scripts: scripts)
     private let hotkeys = HotkeyCenter()
     private var notch: NotchController?
     private var statusItem: NSStatusItem?
@@ -55,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 guard let self else { return completion(nil) }
                 playbackModes.cycleRepeat(bundleID: bundleID, completion: completion)
             },
+            searchLibrary: { [weak self] query, completion in
+                guard let self else { return completion(nil) }
+                mediaSearch.searchLibrary(query, completion: completion)
+            },
+            playSearchResult: { [weak self] result in self?.mediaSearch.play(result) },
+            handOffSearch: { [weak self] query, target in self?.mediaSearch.handOff(query, to: target) },
             contextMenu: { [weak self] in self?.makeMenu() ?? NSMenu() }
         )
         let notch = NotchController(model: model, prefs: prefs, actions: actions)

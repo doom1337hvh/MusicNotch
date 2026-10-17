@@ -20,6 +20,10 @@ struct NotchActions {
     /// These report the modes the app was set to, or nil if it couldn't be controlled.
     var toggleShuffle: @MainActor (String, @escaping @MainActor @Sendable (PlaybackModes?) -> Void) -> Void
     var cycleRepeat: @MainActor (String, @escaping @MainActor @Sendable (PlaybackModes?) -> Void) -> Void
+    /// Search (see `MediaSearch`): Music's library, a result to play, or a hand-off.
+    var searchLibrary: @MainActor (String, @escaping @MainActor @Sendable ([SearchResult]?) -> Void) -> Void
+    var playSearchResult: @MainActor (SearchResult) -> Void
+    var handOffSearch: @MainActor (String, SearchTarget) -> Void
     var contextMenu: @MainActor () -> NSMenu
 }
 
@@ -49,10 +53,13 @@ final class NotchState {
     var modesBundleID: String?
     /// True if the app couldn't be controlled, usually because Automation access was denied.
     var modesUnavailable = false
+    /// The search field, while it's open in place of the controls.
+    var search: SearchState?
     /// Where the progress bar is being dragged to, 0...1, while it's dragged.
     var scrubFraction: Double?
     @ObservationIgnored var onHover: ((Bool) -> Void)?
     @ObservationIgnored var onScrubEnded: (() -> Void)?
+    @ObservationIgnored var onSearch: ((SearchEvent) -> Void)?
     @ObservationIgnored var onTap: (() -> Void)?
 
     init(geometry: NotchGeometry) {
@@ -246,8 +253,12 @@ private final class NotchPanelController {
     private let state: NotchState
     private let model: NowPlaying
     private let prefs: Preferences
+    private let actions: NotchActions
     private var hoverTask: Task<Void, Never>?
     private var trackPeekTask: Task<Void, Never>?
+    /// A Music library search waiting for typing to pause.
+    private var searchTask: Task<Void, Never>?
+    private var resignKeyObserver: NSObjectProtocol?
     /// Closes a notch opened from the keyboard if the pointer never comes over it.
     private var keyboardCloseTask: Task<Void, Never>?
     private var isShown = false
@@ -267,6 +278,7 @@ private final class NotchPanelController {
         self.space = space
         self.model = model
         self.prefs = prefs
+        self.actions = actions
         state = NotchState(geometry: geometry)
         panel = NotchPanel(frame: geometry.frame(for: geometry.closedSize(showsContent: prefs.showBesideNotch)),
                            pinned: space != nil)
@@ -284,6 +296,13 @@ private final class NotchPanelController {
         state.onHover = { [weak self] inside in self?.panelHoverChanged(inside) }
         state.onTap = { [weak self] in self?.tapped() }
         state.onScrubEnded = { [weak self] in self?.scrubEnded() }
+        state.onSearch = { [weak self] event in self?.handleSearch(event) }
+        // Clicking into another app while searching closes the search.
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.panelResignedKey() }
+        }
         hotspot?.onHover = { [weak self] inside in self?.cameraHoverChanged(inside) }
         hotspot?.onClick = { [weak self] in self?.tapped() }
         hotspot?.contextMenu = actions.contextMenu
@@ -334,6 +353,8 @@ private final class NotchPanelController {
             state.isPeeking = false
             state.isTrackPeek = false
             state.showsVolume = false
+            state.search = nil
+            relinquishKey()
             setWindowSize(closedSize)
             panel.orderOut(nil)
             updateMouseHandling()
@@ -341,6 +362,8 @@ private final class NotchPanelController {
     }
 
     func close() {
+        if let resignKeyObserver { NotificationCenter.default.removeObserver(resignKeyObserver) }
+        searchTask?.cancel()
         hoverTask?.cancel()
         trackPeekTask?.cancel()
         if let hotspot {
@@ -508,6 +531,8 @@ private final class NotchPanelController {
         state.isPeeking = false
         state.isTrackPeek = false
         state.showsVolume = false
+        state.search = nil
+        relinquishKey()
         setWindowSize(closedSize)
         updateMouseHandling()
     }
@@ -538,6 +563,12 @@ private final class NotchPanelController {
         case .compact: expand(style: .compact)
         case .full, .sources: expand(style: .full)
         case .newTrack: showTrackPeek(stayOpen: true)
+        case .search:
+            expand(style: .full)
+            startSearch()
+            state.search?.text = DemoShot.searchText
+            state.search?.results = DemoShot.searchResults
+            resizeForSearch()
         }
     }
 
@@ -589,8 +620,9 @@ private final class NotchPanelController {
             guard !Task.isCancelled, let self else { return }
             if inside {
                 self.open()
-            } else if self.state.scrubFraction == nil {
-                // Mid-drag on the progress bar, `scrubEnded` decides instead.
+            } else if self.state.scrubFraction == nil && self.state.search == nil {
+                // Mid-drag on the progress bar, `scrubEnded` decides instead; while searching,
+                // the notch stays open for typing.
                 self.collapse()
             }
         }
@@ -632,16 +664,22 @@ private final class NotchPanelController {
     }
 
     /// Opens the Compact or Full panel: `style`, or else the one chosen in Settings.
-    private func expand(style: NotchStyle? = nil) {
+    /// The Compact or Full panel's size for what's playing.
+    private func panelSize(style: NotchStyle) -> CGSize {
         let showsProgress = prefs.effectiveProgressBar && model.snapshot?.duration != nil
         let showsModes = prefs.showShuffleRepeat
             && model.snapshot.map { AppPlaybackModes.supports(bundleID: $0.bundleID) } == true
+        let showsSearch = prefs.showSearch && model.snapshot.flatMap { SearchTarget.forApp(of: $0) } != nil
+        return style == .compact
+            ? state.geometry.compactSize(showsProgress: showsProgress, showsModes: showsModes,
+                                         showsSearch: showsSearch, sourceCount: model.sessions.count)
+            : state.geometry.expandedSize(showsProgress: showsProgress, sourceCount: model.sessions.count)
+    }
+
+    private func expand(style: NotchStyle? = nil) {
         let style = style ?? prefs.notchStyle
         state.expandedStyle = style
-        state.expandedSize = style == .compact
-            ? state.geometry.compactSize(showsProgress: showsProgress, showsModes: showsModes,
-                                         sourceCount: model.sessions.count)
-            : state.geometry.expandedSize(showsProgress: showsProgress, sourceCount: model.sessions.count)
+        state.expandedSize = panelSize(style: style)
         // Grow the transparent window first (with room for the spring's overshoot),
         // then animate the shape inside it.
         let margin = Self.overshootMargin
@@ -657,6 +695,8 @@ private final class NotchPanelController {
 
     private func collapse() {
         keyboardCloseTask?.cancel()
+        searchTask?.cancel()
+        relinquishKey()
         let shrinkWindow = { [weak self] in
             guard let self, !self.isOpen else { return }
             self.setWindowSize(self.closedSize)
@@ -668,6 +708,7 @@ private final class NotchPanelController {
                 state.isTrackPeek = false
             } completion: {
                 self.state.showsVolume = false
+                self.state.search = nil
                 shrinkWindow()
             }
         } else {
@@ -675,9 +716,162 @@ private final class NotchPanelController {
             state.isPeeking = false
             state.isTrackPeek = false
             state.showsVolume = false
+            state.search = nil
             shrinkWindow()
         }
         updateMouseHandling()
+    }
+
+    // MARK: Search
+
+    private func handleSearch(_ event: SearchEvent) {
+        switch event {
+        case .open:
+            startSearch()
+        case .close:
+            endSearch(thenCollapse: !isPointerOverPanel)
+        case .textChanged(let text):
+            state.search?.text = text
+            scheduleLibrarySearch()
+        case .submit:
+            submitSearch()
+        case .choose(let result):
+            actions.playSearchResult(result)
+            endSearch(thenCollapse: true)
+        }
+    }
+
+    /// Opens the search field in place of the controls, and lets the panel take the
+    /// keyboard while it's open.
+    private func startSearch() {
+        guard state.isExpanded, state.search == nil, let snapshot = model.snapshot,
+              let target = SearchTarget.forApp(of: snapshot) else { return }
+        hoverTask?.cancel()
+        keyboardCloseTask?.cancel()
+        let search = SearchState(target: target)
+        let size = state.geometry.searchSize(width: state.expandedSize.width, resultRows: search.resultRows,
+                                             showsHint: target.hint != nil)
+        growWindow(toFit: size)
+        withAnimation(.smooth(duration: 0.25)) {
+            state.showsVolume = false
+            state.search = search
+            state.expandedSize = size
+        }
+        panel.acceptsKey = true
+        panel.makeKey()
+    }
+
+    /// Closes the search field and gives the keyboard back to the app in front.
+    private func endSearch(thenCollapse: Bool) {
+        searchTask?.cancel()
+        guard state.search != nil else { return }
+        if thenCollapse {
+            // Closes with the search still showing; `collapse` clears it at the end.
+            collapse()
+            return
+        }
+        relinquishKey()
+        withAnimation(.smooth(duration: 0.25)) {
+            state.search = nil
+            state.expandedSize = panelSize(style: state.expandedStyle)
+        }
+    }
+
+    /// Searches Music's library once typing pauses.
+    private func scheduleLibrarySearch() {
+        searchTask?.cancel()
+        guard let search = state.search, search.target == .musicLibrary else { return }
+        let query = search.text.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else {
+            state.search?.results = nil
+            state.search?.message = nil
+            state.search?.isSearching = false
+            resizeForSearch()
+            return
+        }
+        searchTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.searchLibrary(query, thenPlayFirst: false)
+        }
+    }
+
+    private func searchLibrary(_ query: String, thenPlayFirst: Bool) {
+        state.search?.isSearching = true
+        actions.searchLibrary(query) { [weak self] results in
+            // Drop answers to a query that's since changed.
+            guard let self, self.state.search?.text.trimmingCharacters(in: .whitespaces) == query else { return }
+            self.state.search?.isSearching = false
+            if thenPlayFirst, let first = results?.first {
+                self.actions.playSearchResult(first)
+                self.endSearch(thenCollapse: true)
+                return
+            }
+            self.state.search?.results = results ?? []
+            self.state.search?.message = results == nil
+                ? "Couldn't search Music. Allow MusicNotch in Privacy & Security → Automation."
+                : nil
+            self.resizeForSearch()
+        }
+    }
+
+    /// Return: plays Music's top result, or hands the query to the app or site.
+    private func submitSearch() {
+        guard let search = state.search else { return }
+        let query = search.text.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return }
+        guard search.target == .musicLibrary else {
+            actions.handOffSearch(query, search.target)
+            endSearch(thenCollapse: true)
+            return
+        }
+        if let first = search.results?.first {
+            actions.playSearchResult(first)
+            endSearch(thenCollapse: true)
+        } else {
+            searchTask?.cancel()
+            searchLibrary(query, thenPlayFirst: true)
+        }
+    }
+
+    /// Fits the panel to the search field and whatever is below it.
+    private func resizeForSearch() {
+        guard let search = state.search else { return }
+        let size = state.geometry.searchSize(width: state.expandedSize.width, resultRows: search.resultRows,
+                                             showsHint: search.target.hint != nil)
+        guard size != state.expandedSize else { return }
+        growWindow(toFit: size)
+        withAnimation(.smooth(duration: 0.25)) { state.expandedSize = size }
+    }
+
+    /// Makes the window big enough for `size` and the springs' overshoot. It doesn't shrink
+    /// while open; the transparent part lets clicks through.
+    private func growWindow(toFit size: CGSize) {
+        let needed = CGSize(width: size.width + 2 * Self.overshootMargin, height: size.height + Self.overshootMargin)
+        let current = panel.frame.size
+        guard needed.width > current.width || needed.height > current.height else { return }
+        setWindowSize(CGSize(width: max(needed.width, current.width), height: max(needed.height, current.height)))
+    }
+
+    /// The user clicked into another app while searching.
+    private func panelResignedKey() {
+        // A screenshot (`DemoShot`) holds still as focus returns to the terminal that ran it.
+        guard state.search != nil, DemoShot.current == nil else { return }
+        endSearch(thenCollapse: !isPointerOverPanel)
+    }
+
+    private var isPointerOverPanel: Bool {
+        state.geometry.frame(for: state.expandedSize).contains(NSEvent.mouseLocation)
+    }
+
+    /// Gives the keyboard back to the app in front: the panel stops accepting it, and
+    /// ordering the panel out and straight back in makes macOS hand it to that app again.
+    private func relinquishKey() {
+        panel.acceptsKey = false
+        guard panel.isKeyWindow else { return }
+        panel.orderOut(nil)
+        panel.orderFrontRegardless()
+        space?.add(panel)
     }
 
     /// Room around the shape so springs (Bouncy, Pop, Bounce) can overshoot without being cut off.

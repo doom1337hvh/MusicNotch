@@ -62,12 +62,13 @@ struct NotchGeometry: Equatable {
         return CGSize(width: max(collapsedSize.width + 40, 300), height: height + content)
     }
 
-    /// Keep in sync with the paddings and row heights in `CompactView`. Shuffle and repeat
-    /// add two buttons to its one row, so the panel widens to leave the title its room.
-    func compactSize(showsProgress: Bool, showsModes: Bool = false, sourceCount: Int = 0) -> CGSize {
+    /// Keep in sync with the paddings and row heights in `CompactView`. Shuffle, repeat and
+    /// search add buttons to its one row, so the panel widens to leave the title its room.
+    func compactSize(showsProgress: Bool, showsModes: Bool = false, showsSearch: Bool = false,
+                     sourceCount: Int = 0) -> CGSize {
         let content: CGFloat = 10 + 40 + (showsProgress ? 8 + 3 : 0) + 12
-        let modeButtons: CGFloat = showsModes ? 2 * 26 : 0
-        let width = max(collapsedSize.width + 40, 330 + modeButtons, widthForSourceIcons(sourceCount))
+        let extraButtons: CGFloat = (showsModes ? 2 * 26 : 0) + (showsSearch ? 26 : 0)
+        let width = max(collapsedSize.width + 40, 330 + extraButtons, widthForSourceIcons(sourceCount))
         return CGSize(width: width, height: height + content)
     }
 
@@ -75,6 +76,18 @@ struct NotchGeometry: Equatable {
     func expandedSize(showsProgress: Bool, sourceCount: Int = 0) -> CGSize {
         let content: CGFloat = 12 + 56 + 14 + (showsProgress ? 18 + 14 : 0) + 30 + 16
         let width = max(collapsedSize.width + 40, 400, widthForSourceIcons(sourceCount))
+        return CGSize(width: width, height: height + content)
+    }
+
+    /// The open panel while searching: the field, then Music's results (`resultRows`) or a
+    /// one-line hint. Keep in sync with the paddings and row heights in `SearchPanelView`.
+    func searchSize(width: CGFloat, resultRows: Int?, showsHint: Bool) -> CGSize {
+        var content: CGFloat = 12 + 30 + 14
+        if let rows = resultRows {
+            content += 10 + CGFloat(max(rows, 1)) * 34  // "No songs found" takes one row
+        } else if showsHint {
+            content += 10 + 16
+        }
         return CGSize(width: width, height: height + content)
     }
 

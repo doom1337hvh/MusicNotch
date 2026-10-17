@@ -3,6 +3,8 @@ import SwiftUI
 
 /// A borderless panel that sits over the menu bar and never takes focus.
 final class NotchPanel: NSPanel {
+    /// On only while the search field is open, so it can be typed into.
+    var acceptsKey = false
     /// A pinned panel joins every desktop and is added to `NotchSpace`; otherwise it lives on
     /// one desktop at a time and is moved to the active one after a switch.
     init(frame: CGRect, pinned: Bool) {
@@ -21,7 +23,7 @@ final class NotchPanel: NSPanel {
         animationBehavior = .none
     }
 
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { acceptsKey }
     override var canBecomeMain: Bool { false }
 
     /// Allow the frame to overlap the menu bar.

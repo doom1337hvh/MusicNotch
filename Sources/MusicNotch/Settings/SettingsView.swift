@@ -242,6 +242,10 @@ private struct NotchSettings: View {
                     Text("Shuffle and repeat buttons")
                     Text("For Spotify and Music. The first click asks to let MusicNotch control the app.")
                 }
+                Toggle(isOn: $prefs.showSearch) {
+                    Text("Search button")
+                    Text("Searches your Music library right in the notch, or sends a search to Spotify, YouTube or SoundCloud.")
+                }
                 Toggle("Click the artwork to open the playing app", isOn: $prefs.clickArtworkOpensApp)
             } header: {
                 Text("In the open notch")
