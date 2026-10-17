@@ -16,6 +16,8 @@ struct NotchRootView: View {
         let barSize = peeking ? geometry.peekSize : geometry.closedSize(showsContent: prefs.showBesideNotch)
         let size = expanded ? state.expandedSize : barSize
         let compact = state.expandedStyle == .compact || state.isTrackPeek
+        // Minimal stays at the housing's height, where glass would be covered in black.
+        let glass = expanded && prefs.effectiveTheme == .glass && (state.expandedStyle != .minimal || state.isTrackPeek)
         let sources = SourcesInfo(sessions: model.sessions, displayedID: model.displayedSessionID,
                                   canControl: model.canControlDisplayed)
         // On a closed notch with "Open on: Click", the artwork opens the notch like the rest
@@ -77,7 +79,11 @@ struct NotchRootView: View {
         // reveals it evenly on both sides instead of reflowing it on every frame.
         .frame(width: size.width, height: size.height, alignment: .top)
         // An invisible target still needs a little opacity to catch the pointer.
-        .background(shape.fill(.black.opacity(hidesClosed && !geometry.hasNotch ? 0.01 : 1)))
+        .background(alignment: .top) {
+            NotchBackground(shape: shape, isGlass: glass,
+                            blackHeight: geometry.hasNotch ? geometry.height : 0,
+                            opacity: hidesClosed && !geometry.hasNotch ? 0.01 : 1)
+        }
         .clipShape(shape)
         .contentShape(shape)
         // Desktop-switch Zoom and Bounce; at rest this does nothing.
@@ -98,6 +104,7 @@ struct NotchRootView: View {
             isShown: state.showsVolume && state.volumeBundleID == bundleID,
             level: state.volumeLevel ?? 0.5,
             isUnavailable: state.volumeUnavailable,
+            tint: prefs.accent(for: snapshot),
             toggle: {
                 if state.showsVolume && state.volumeBundleID == bundleID {
                     withAnimation(.smooth(duration: 0.2)) { state.showsVolume = false }
@@ -236,6 +243,8 @@ struct VolumeControl {
     var level: Double
     /// True if the app's volume couldn't be read, usually because Automation access was denied.
     var isUnavailable: Bool
+    /// The slider's colour (see `Preferences.accent`), or nil for white.
+    var tint: CGColor?
     var toggle: @MainActor () -> Void
     var change: @MainActor (Double) -> Void
 }
@@ -277,7 +286,8 @@ private struct CollapsedView: View {
                               height: geometry.height, enabled: sources.canControl, action: actions.next)
                     .transition(.opacity.combined(with: .scale(scale: 0.5)))
             }
-            EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation)
+            EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation,
+                          color: prefs.accent(for: snapshot))
                 .frame(width: 16, height: side * 0.6)
                 .frame(width: geometry.wingWidth)
         }
@@ -425,13 +435,14 @@ private struct ExpandedView: View {
                     }
                     .lineLimit(1)
                     Spacer(minLength: 0)
-                    EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation)
+                    EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation,
+                          color: prefs.accent(for: snapshot))
                         .frame(width: 16, height: 14)
                 }
                 .frame(height: 56)
 
                 if prefs.effectiveProgressBar, let duration = snapshot.duration {
-                    ProgressRow(snapshot: snapshot, duration: duration, seek: seek)
+                    ProgressRow(snapshot: snapshot, duration: duration, seek: seek, tint: prefs.accent(for: snapshot))
                         .frame(height: 18)
                 }
 
@@ -508,7 +519,8 @@ private struct TrackPeekView: View {
                 }
                 .lineLimit(1)
                 Spacer(minLength: 0)
-                EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation)
+                EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation,
+                          color: prefs.accent(for: snapshot))
                     .frame(width: 14, height: 12)
             }
             .frame(height: 36)
@@ -599,7 +611,7 @@ private struct CompactView: View {
                 }
 
                 if prefs.effectiveProgressBar, let duration = snapshot.duration {
-                    ProgressLine(snapshot: snapshot, duration: duration, seek: seek)
+                    ProgressLine(snapshot: snapshot, duration: duration, seek: seek, tint: prefs.accent(for: snapshot))
                         .frame(height: 3)
                 }
             }
@@ -643,6 +655,7 @@ private struct ProgressRow: View {
     let snapshot: NowPlayingSnapshot
     let duration: TimeInterval
     let seek: SeekControl
+    let tint: CGColor?
 
     var body: some View {
         if snapshot.isPlaying {
@@ -663,7 +676,7 @@ private struct ProgressRow: View {
         return HStack(spacing: 8) {
             Text(Self.format(elapsed))
                 .frame(width: labelWidth, alignment: .leading)
-            SeekableTrack(fraction: fraction, barHeight: 4, seek: seek)
+            SeekableTrack(fraction: fraction, barHeight: 4, seek: seek, tint: tint)
             Text("-" + Self.format(duration - elapsed))
                 .frame(width: labelWidth, alignment: .trailing)
         }
@@ -687,14 +700,15 @@ private struct ProgressLine: View {
     let snapshot: NowPlayingSnapshot
     let duration: TimeInterval
     let seek: SeekControl
+    let tint: CGColor?
 
     var body: some View {
         if snapshot.isPlaying {
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                SeekableTrack(fraction: fraction(at: context.date), barHeight: 3, seek: seek)
+                SeekableTrack(fraction: fraction(at: context.date), barHeight: 3, seek: seek, tint: tint)
             }
         } else {
-            SeekableTrack(fraction: fraction(at: .now), barHeight: 3, seek: seek)
+            SeekableTrack(fraction: fraction(at: .now), barHeight: 3, seek: seek, tint: tint)
         }
     }
 
@@ -709,10 +723,11 @@ private struct SeekableTrack: View {
     let fraction: Double
     let barHeight: CGFloat
     let seek: SeekControl
+    let tint: CGColor?
 
     var body: some View {
         let dragging = seek.dragFraction != nil
-        ProgressTrack(fraction: fraction, highlighted: dragging)
+        ProgressTrack(fraction: fraction, highlighted: dragging, tint: tint)
             .frame(height: dragging ? barHeight + 2 : barHeight)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // A target taller than the thin bar, so it's easy to grab.
@@ -740,12 +755,14 @@ private struct SeekableTrack: View {
 private struct ProgressTrack: View {
     let fraction: Double
     var highlighted = false
+    /// The artwork's colour, or nil for white.
+    var tint: CGColor?
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.2))
-                Capsule().fill(.white.opacity(highlighted ? 1 : 0.85))
+                Capsule().fill(tint.map { Color(cgColor: $0) } ?? .white.opacity(highlighted ? 1 : 0.85))
                     .frame(width: proxy.size.width * fraction)
             }
         }
@@ -770,7 +787,7 @@ private struct VolumeRow: View {
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: "speaker.fill")
-            VolumeSlider(level: volume.level, onChange: volume.change)
+            VolumeSlider(level: volume.level, tint: volume.tint, onChange: volume.change)
             Image(systemName: "speaker.wave.3.fill")
         }
         .font(.system(size: 9, weight: .semibold))
@@ -786,6 +803,8 @@ private struct VolumeRow: View {
 /// Drawn like the progress bar, with a knob; drag or click anywhere on it.
 private struct VolumeSlider: View {
     let level: Double
+    /// The artwork's colour, or nil for white.
+    let tint: CGColor?
     let onChange: @MainActor (Double) -> Void
 
     var body: some View {
@@ -793,7 +812,8 @@ private struct VolumeSlider: View {
             let width = proxy.size.width
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.2)).frame(height: 4)
-                Capsule().fill(.white.opacity(0.85)).frame(width: max(4, width * level), height: 4)
+                Capsule().fill(tint.map { Color(cgColor: $0) } ?? .white.opacity(0.85))
+                    .frame(width: max(4, width * level), height: 4)
                 Circle().fill(.white).frame(width: 10, height: 10).offset(x: width * level - 5)
             }
             .frame(maxHeight: .infinity)

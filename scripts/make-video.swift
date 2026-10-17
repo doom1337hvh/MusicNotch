@@ -50,12 +50,12 @@ let settings = [
     "showProgressBar": "<true/>", "lowResourceMode": "<false/>", "hideDuringSwipes": "<false/>",
     "hideInFullScreen": "<integer>0</integer>", "showMenuBarIcon": "<false/>", "settingsTab": "<integer>0</integer>",
     "updateBatching": "<integer>150</integer>", "openFromCameraOnly": "<true/>", "clickArtworkOpensApp": "<true/>",
-    "showOnExternalDisplays": "<false/>",
+    "showOnExternalDisplays": "<false/>", "notchTheme": "<integer>0</integer>", "tintWithArtwork": "<true/>", "followLowPowerMode": "<false/>",
 ]
 /// The Settings clip shows every setting at its default.
 let settingsDefaults = [
     "equalizerAnimation": "<integer>1</integer>", "hideInFullScreen": "<integer>1</integer>",
-    "showMenuBarIcon": "<true/>",
+    "showMenuBarIcon": "<true/>", "followLowPowerMode": "<true/>",
 ]
 
 // MARK: The scenes
@@ -77,6 +77,11 @@ struct Scene {
     var isSettings = false
     /// The README's main clip, also written as an MP4.
     var isTour = false
+    /// Settings of its own, on top of `settings`.
+    var extraSettings: [String: String] = [:]
+    /// Puts the backdrop in a real window behind the notch, for glass to blur: the recording
+    /// leaves out every other window, so otherwise there's nothing behind it.
+    var needsBackdropWindow = false
 
     var output: URL {
         root.appendingPathComponent(isTour ? "docs/demo.gif" : "docs/clips/\(name).gif")
@@ -113,6 +118,11 @@ let scenes: [Scene] = [
                  (3.4, 170, 16), (4.2, -148, 16), (5.0, -148, 16), (5.8, -170, 16), (6.6, -170, 16),
                  (7.4, park.x, park.y)],
           clicks: [3.0, 4.6, 6.2]),
+    Scene(name: "glass", length: 8.4,
+          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.7, 4, 15), (2.6, 170, 16),
+                 (3.4, 170, 16), (4.2, -148, 16), (5.0, -148, 16), (5.8, -170, 16), (6.6, -170, 16),
+                 (7.4, park.x, park.y)],
+          clicks: [3.0, 4.6, 6.2], extraSettings: ["notchTheme": "<integer>1</integer>"], needsBackdropWindow: true),
     Scene(name: "search", length: 8.6,
           path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.4, 4, 15), (2.1, -157, 161),
                  (2.7, -157, 161), (3.3, 120, 128), (4.3, 120, 128), (4.9, -40, 101), (5.5, -40, 101),
@@ -203,6 +213,31 @@ func makeBackdrop(_ size: CGSize, calm: Bool, notch: Bool) -> CGImage {
 }
 
 let arrow = NSCursor.arrow
+/// Only touched on the main thread.
+nonisolated(unsafe) var backdropWindow: BackdropWindow?
+
+/// A window under every other one, so it's only seen by the recording.
+final class BackdropWindow: NSWindow {
+    init(_ image: CGImage, region: CGRect, on screenFrame: CGRect) {
+        let frame = CGRect(x: screenFrame.minX + region.minX, y: screenFrame.maxY - region.maxY,
+                           width: region.width, height: region.height)
+        super.init(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+        level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
+        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        ignoresMouseEvents = true
+        isReleasedWhenClosed = false
+        let view = NSView(frame: CGRect(origin: .zero, size: frame.size))
+        view.wantsLayer = true
+        view.layer?.contents = image
+        view.layer?.contentsGravity = CALayerContentsGravity.resize
+        contentView = view
+        setFrame(frame, display: true)
+        orderFrontRegardless()
+        CATransaction.flush()
+    }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
 
 /// The backdrop, MusicNotch's windows and the pointer, at `time` seconds into the scene.
 func compose(_ context: CGContext, size: CGSize, backdrop: CGImage, capture: CGImage?, scene: Scene,
@@ -272,6 +307,7 @@ func record(_ scene: Scene) async throws {
     let process = Process()
     process.executableURL = app
     let overrides = settings.merging(scene.isSettings ? settingsDefaults : [:]) { $1 }
+        .merging(scene.extraSettings) { $1 }
     process.arguments = ["-demo", scene.name, "-demoClock", clockFile.path]
         + overrides.sorted { $0.key < $1.key }.flatMap { ["-\($0.key)", $0.value] }
     try process.run()
@@ -321,8 +357,18 @@ func record(_ scene: Scene) async throws {
     configuration.showsCursor = false
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
     configuration.queueDepth = 8
+    var included = [musicNotch]
+    if scene.needsBackdropWindow {
+        let image = makeBackdrop(size, calm: true, notch: true), screenFrame = screen.frame
+        await MainActor.run { backdropWindow = BackdropWindow(image, region: region, on: screenFrame) }
+        try await Task.sleep(for: .milliseconds(300))
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let recorder = content.applications.first(where: { $0.processID == getpid() })
+        else { throw NSError(domain: "make-video", code: 3, userInfo: [NSLocalizedDescriptionKey: "\(scene.name): no backdrop window"]) }
+        included.append(recorder)
+    }
     let capture = Capture()
-    let stream = SCStream(filter: SCContentFilter(display: display, including: [musicNotch], exceptingWindows: []),
+    let stream = SCStream(filter: SCContentFilter(display: display, including: included, exceptingWindows: []),
                           configuration: configuration, delegate: nil)
     try stream.addStreamOutput(capture, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture"))
     try await stream.startCapture()
@@ -407,6 +453,10 @@ func record(_ scene: Scene) async throws {
         await video.writer.finishWriting()
     }
     try await stream.stopCapture()
+    await MainActor.run {
+        backdropWindow?.close()
+        backdropWindow = nil
+    }
     try? FileManager.default.removeItem(at: clockFile)
     let bytes = (try? FileManager.default.attributesOfItem(atPath: scene.output.path)[.size] as? Int) ?? 0
     print("  \(scene.name): \(scene.output.path.replacingOccurrences(of: root.path + "/", with: "")) (\(bytes / 1024) KB)")

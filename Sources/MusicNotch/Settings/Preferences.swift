@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 
@@ -110,6 +111,22 @@ enum NotchOpenTrigger: Int, CaseIterable, Identifiable {
     }
 }
 
+/// What the open notch is made of.
+enum NotchTheme: Int, CaseIterable, Identifiable {
+    case black = 0
+    /// Black over the camera housing, fading into frosted glass below it.
+    case glass = 1
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .black: "Black"
+        case .glass: "Glass"
+        }
+    }
+}
+
 /// User settings, saved to UserDefaults.
 ///
 /// Views and the notch read the `effective…` values, which apply low-resource mode
@@ -120,6 +137,7 @@ final class Preferences {
         static let clickArtworkOpensApp = "clickArtworkOpensApp"
         static let notchStyle = "notchStyle"
         static let openTrigger = "notchOpenTrigger"
+        static let theme = "notchTheme"
         static let showTrackPeek = "showTrackPeek"
         static let showBesideNotch = "showBesideNotch"
         static let showShuffleRepeat = "showShuffleRepeat"
@@ -129,6 +147,8 @@ final class Preferences {
         static let showOnExternalDisplays = "showOnExternalDisplays"
         static let showMenuBarIcon = "showMenuBarIcon"
         static let lowResourceMode = "lowResourceMode"
+        static let followLowPowerMode = "followLowPowerMode"
+        static let tintWithArtwork = "tintWithArtwork"
         static let equalizerAnimation = "equalizerAnimation"
         static let showArtwork = "showArtwork"
         static let showProgressBar = "showProgressBar"
@@ -158,6 +178,9 @@ final class Preferences {
     }
     var openTrigger: NotchOpenTrigger {
         didSet { defaults.set(openTrigger.rawValue, forKey: Key.openTrigger) }
+    }
+    var theme: NotchTheme {
+        didSet { defaults.set(theme.rawValue, forKey: Key.theme) }
     }
     /// The artwork and equalizer beside the closed notch. Off, the closed notch shows nothing
     /// until it's hovered over, like the plain camera housing.
@@ -214,6 +237,17 @@ final class Preferences {
     var equalizerAnimation: EqualizerAnimation {
         didSet { defaults.set(equalizerAnimation.rawValue, forKey: Key.equalizerAnimation) }
     }
+    /// Low-resource mode also turns on while macOS's Low Power Mode is on.
+    var followLowPowerMode: Bool {
+        didSet {
+            defaults.set(followLowPowerMode, forKey: Key.followLowPowerMode)
+            onAdapterOptionsChange?()
+        }
+    }
+    /// Tints the equalizer, progress bar and volume slider with the artwork's colour.
+    var tintWithArtwork: Bool {
+        didSet { defaults.set(tintWithArtwork, forKey: Key.tintWithArtwork) }
+    }
     var showArtwork: Bool {
         didSet {
             defaults.set(showArtwork, forKey: Key.showArtwork)
@@ -262,6 +296,7 @@ final class Preferences {
             .flatMap(NotchStyle.init(rawValue:)) ?? .full
         openTrigger = (defaults.object(forKey: Key.openTrigger) as? Int)
             .flatMap(NotchOpenTrigger.init(rawValue:)) ?? .hover
+        theme = (defaults.object(forKey: Key.theme) as? Int).flatMap(NotchTheme.init(rawValue:)) ?? .black
         showTrackPeek = bool(Key.showTrackPeek, true)
         showBesideNotch = bool(Key.showBesideNotch, true)
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
@@ -272,6 +307,8 @@ final class Preferences {
         showOnExternalDisplays = bool(Key.showOnExternalDisplays, false)
         showMenuBarIcon = bool(Key.showMenuBarIcon, true)
         lowResourceMode = bool(Key.lowResourceMode, false)
+        followLowPowerMode = bool(Key.followLowPowerMode, true)
+        tintWithArtwork = bool(Key.tintWithArtwork, true)
         equalizerAnimation = (defaults.object(forKey: Key.equalizerAnimation) as? Int)
             .flatMap(EqualizerAnimation.init(rawValue:)) ?? .whenPluggedIn
         showArtwork = bool(Key.showArtwork, true)
@@ -289,6 +326,11 @@ final class Preferences {
         hotkeys = Dictionary(uniqueKeysWithValues: savedHotkeys.compactMap { name, hotkey in
             HotkeyAction(rawValue: name).map { ($0, hotkey) }
         })
+        // Low Power Mode can switch low-resource mode, which changes what the adapter sends.
+        power.onLowPowerModeChange = { [weak self] in
+            guard let self, followLowPowerMode, !lowResourceMode else { return }
+            onAdapterOptionsChange?()
+        }
     }
 
     /// Builds from before the first release used the bundle ID "local.MusicNotch"; their
@@ -303,21 +345,35 @@ final class Preferences {
         defaults.removePersistentDomain(forName: legacy)
     }
 
+    /// Low-resource mode is in effect: switched on, or on for now because of Low Power Mode.
+    var isLowResource: Bool { lowResourceMode || isLowResourceForLowPowerMode }
+    /// Low-resource mode is on only because macOS's Low Power Mode is.
+    var isLowResourceForLowPowerMode: Bool { !lowResourceMode && followLowPowerMode && power.isLowPowerMode }
+
+    /// The colour for the equalizer and bars: the artwork's, while "Colours from the artwork"
+    /// is on and artwork is shown; nil for white.
+    func accent(for snapshot: NowPlayingSnapshot) -> CGColor? {
+        tintWithArtwork && effectiveArtwork ? snapshot.artwork?.tint : nil
+    }
+
     /// The animated bars are the app's only ongoing energy cost (the window server redraws
     /// them while music plays), so by default they stop on battery and in Low Power Mode.
     var effectiveEqualizerAnimation: Bool {
-        guard !lowResourceMode else { return false }
+        guard !isLowResource else { return false }
         switch equalizerAnimation {
         case .always: return true
         case .whenPluggedIn: return !power.isOnBattery && !power.isLowPowerMode
         case .never: return false
         }
     }
-    var effectiveArtwork: Bool { showArtwork && !lowResourceMode }
-    var effectiveProgressBar: Bool { showProgressBar && !lowResourceMode }
-    var effectiveOpenAnimation: OpenAnimation { lowResourceMode ? .instant : openAnimation }
-    var effectiveSpaceSwitchAnimation: SpaceSwitchAnimation { lowResourceMode ? .none : spaceSwitchAnimation }
-    var effectiveBatching: UpdateBatching { lowResourceMode ? .batterySaver : updateBatching }
+    /// Glass makes the window server blur what's behind the open notch, so low-resource
+    /// mode keeps it black.
+    var effectiveTheme: NotchTheme { isLowResource ? .black : theme }
+    var effectiveArtwork: Bool { showArtwork && !isLowResource }
+    var effectiveProgressBar: Bool { showProgressBar && !isLowResource }
+    var effectiveOpenAnimation: OpenAnimation { isLowResource ? .instant : openAnimation }
+    var effectiveSpaceSwitchAnimation: SpaceSwitchAnimation { isLowResource ? .none : spaceSwitchAnimation }
+    var effectiveBatching: UpdateBatching { isLowResource ? .batterySaver : updateBatching }
 
     var adapterOptions: AdapterOptions {
         AdapterOptions(includeArtwork: effectiveArtwork, debounceMilliseconds: effectiveBatching.rawValue)

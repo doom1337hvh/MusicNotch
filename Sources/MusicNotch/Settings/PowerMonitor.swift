@@ -8,6 +8,8 @@ import Observation
 final class PowerMonitor {
     private(set) var isOnBattery = false
     private(set) var isLowPowerMode = false
+    /// Called when Low Power Mode turns on or off.
+    @ObservationIgnored var onLowPowerModeChange: (() -> Void)?
 
     @ObservationIgnored private var runLoopSource: CFRunLoopSource?
 
@@ -36,6 +38,9 @@ final class PowerMonitor {
         let onBattery = source == kIOPSBatteryPowerValue
         let lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
         if onBattery != isOnBattery { isOnBattery = onBattery }
-        if lowPowerMode != isLowPowerMode { isLowPowerMode = lowPowerMode }
+        if lowPowerMode != isLowPowerMode {
+            isLowPowerMode = lowPowerMode
+            onLowPowerModeChange?()
+        }
     }
 }

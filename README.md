@@ -26,6 +26,8 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 
 - **Three styles:** Minimal widens the notch with skip buttons. Compact opens a small panel. Full shows the artwork, title, a progress bar and all the controls.
 - **Seek** by dragging the progress bar.
+- **Colours from the artwork:** the equalizer, progress bar and volume slider take on the album's colour.
+- **Glass theme:** the open notch can be glass instead of black, fading from black at the camera so it still grows out of the housing.
 - **Shuffle, repeat and volume** for Spotify and Apple Music.
 - **Search:** find a song in your Music library and play it right from the notch, or send a search to Spotify, YouTube or SoundCloud.
 - **Several apps at once:** if Spotify is playing and a YouTube video is paused, the notch shows the one that's playing. The open panel has an icon for each app, so you can switch, and the controls reach apps in the background too.
@@ -62,6 +64,11 @@ Everything above can be switched off or changed in Settings.
 <p align="center">
   <img src="docs/clips/sources.gif" width="820" alt="Several apps at once: clicking the Music, Chrome and Spotify icons beside the camera switches what the notch shows"><br>
   <sub><b>Several apps:</b> each app with media gets an icon beside the camera; click one to switch.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/clips/glass.gif" width="820" alt="The glass theme: the open panel is see-through below the camera, fading from black at the top, while switching between three apps changes the colours"><br>
+  <sub><b>Glass:</b> the desktop shows through the open notch, fading from black at the camera. The bars and progress bar take each album's colour.</sub>
 </p>
 
 <p align="center">
@@ -140,7 +147,7 @@ Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by ope
 - **Open on:** Hover (default) or Click.
 - **Only open from the camera** (on by default): the closed notch's sides let clicks through to the menu bar, and only the camera area opens it.
 
-*In the open notch*: album artwork, the progress bar (drag it to seek), shuffle and repeat buttons (for Spotify and Music), the search button, and whether clicking the artwork opens the playing app.
+*In the open notch*: the **Theme**, Black (default) or Glass, which lets the desktop show through below the camera, fading from black at the top; album artwork, the progress bar (drag it to seek), shuffle and repeat buttons (for Spotify and Music), the search button, and whether clicking the artwork opens the playing app. **Colours from the artwork** (on by default) tints the equalizer, progress bar and volume slider with the album's most vivid colour; black-and-white artwork keeps them white.
 
 **Search** (the 🔍 in the Compact and Full panels) depends on the app. Music shows matching songs from your library right in the notch: click one, or press Return for the top result. Spotify, YouTube and SoundCloud don't let other apps see their results, so pressing Return opens their own search with what you typed. A browser tab searches YouTube. Esc closes the search.
 
@@ -152,7 +159,8 @@ Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by ope
 **Shortcuts:** open or close the notch, play/pause, next track, previous track. None are set by default. Click a field, then press the keys; Delete clears it. A notch opened from the keyboard stays open while the pointer is over it, and otherwise closes after a few seconds.
 
 **Performance**
-- **Low-resource mode:** one switch that turns off animations, artwork and the progress bar, and batches updates once a second.
+- **Low-resource mode:** one switch that turns off animations, glass, artwork and the progress bar, and batches updates once a second.
+- **Turn on with Low Power Mode** (on by default): low-resource mode switches on by itself while macOS's Low Power Mode is on, and off again after.
 - **Equalizer animation:** Always, Only when plugged in (default) or Never.
 - **Update batching:** Instant, Balanced (default) or Battery saver.
 

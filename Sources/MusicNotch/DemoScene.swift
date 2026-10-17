@@ -13,6 +13,8 @@ enum DemoScene: String {
     case compact
     case full
     case sources
+    /// The sources scene with the glass theme.
+    case glass
     case search
     case newTrack = "new-track"
     case settings
@@ -40,12 +42,12 @@ enum DemoScene: String {
     var app: String { self == .tour || self == .search ? "com.apple.Music" : "com.spotify.client" }
     var firstTrack: Int { self == .tour || self == .search ? 1 : 0 }
 
-    /// What's playing: `track` of `tracks` at `elapsed` seconds in. The sources scene adds a
+    /// What's playing: `track` of `tracks` at `elapsed` seconds in. The sources and glass scenes add a
     /// paused video in Chrome and a paused song in Music; Settings has nothing playing.
     func update(track: Int, playing: Bool, elapsed: TimeInterval) -> SessionsUpdate {
         guard self != .settings else { return SessionsUpdate(sessions: [], electedBundleID: nil) }
         let main = Self.session(app, track: track, playing: playing, elapsed: elapsed)
-        guard self == .sources else { return SessionsUpdate(sessions: [main], electedBundleID: main.id) }
+        guard self == .sources || self == .glass else { return SessionsUpdate(sessions: [main], electedBundleID: main.id) }
         return SessionsUpdate(sessions: [
             main,
             Self.session("com.google.Chrome", track: 2, playing: false, elapsed: Self.tracks[2].elapsed),
@@ -76,7 +78,7 @@ enum DemoScene: String {
                    (5.0, .modes(PlaybackModes(shuffle: false, repeatMode: .off))),
                    (5.9, .modes(PlaybackModes(shuffle: false, repeatMode: .all))),
                    (7.4, .collapse)]
-        case .sources:
+        case .sources, .glass:
             [(1.2, .open(.full)), (3.0, .select("com.apple.Music")), (4.6, .select("com.google.Chrome")),
              (6.2, .select("com.spotify.client")), (7.6, .collapse)]
         case .search:

@@ -8,11 +8,14 @@ import SwiftUI
 struct EqualizerView: NSViewRepresentable {
     var isPlaying: Bool
     var animated: Bool
+    /// The artwork's colour (see `Preferences.accent`), or nil for white.
+    var color: CGColor?
 
     func makeNSView(context: Context) -> EqualizerBarsView { EqualizerBarsView() }
 
     func updateNSView(_ view: EqualizerBarsView, context: Context) {
         view.update(isPlaying: isPlaying, animated: animated)
+        view.setColor(color)
     }
 }
 
@@ -27,15 +30,18 @@ final class EqualizerBarsView: NSView {
     private static let bounceStartScales: [CGFloat] = [0.3, 0.65, 1, 0.65]
     private static let morphDuration: CFTimeInterval = 0.3
 
+    private static let white = NSColor.white.withAlphaComponent(0.9).cgColor
+
     private let bars: [CALayer]
     private var mode: (isPlaying: Bool, animated: Bool)?
+    private var color: CGColor?
     /// Bumped on every change, so a finished transition only starts the bounce it was for.
     private var generation = 0
 
     init() {
         bars = Self.durations.map { _ in
             let bar = CALayer()
-            bar.backgroundColor = NSColor.white.withAlphaComponent(0.9).cgColor
+            bar.backgroundColor = EqualizerBarsView.white
             return bar
         }
         super.init(frame: .zero)
@@ -50,6 +56,16 @@ final class EqualizerBarsView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         applyShapes()
+        CATransaction.commit()
+    }
+
+    /// Fades to a new track's colour.
+    func setColor(_ newColor: CGColor?) {
+        guard newColor != color else { return }
+        color = newColor
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(window == nil ? 0 : 0.4)
+        bars.forEach { $0.backgroundColor = newColor ?? Self.white }
         CATransaction.commit()
     }
 

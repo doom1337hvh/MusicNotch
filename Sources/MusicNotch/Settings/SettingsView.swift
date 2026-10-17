@@ -236,16 +236,28 @@ private struct NotchSettings: View {
             }
 
             Section {
+                Picker(selection: prefs.isLowResource ? .constant(.black) : $prefs.theme) {
+                    ForEach(NotchTheme.allCases) { Text($0.label).tag($0) }
+                } label: {
+                    Text("Theme")
+                    Text("Glass lets the desktop show through below the camera, fading from black at the top.")
+                }
+                .disabled(prefs.isLowResource)
                 Toggle(isOn: effective(\.showArtwork)) {
                     Text("Album artwork")
                     Text("When off, artwork isn't loaded at all.")
                 }
-                .disabled(prefs.lowResourceMode)
+                .disabled(prefs.isLowResource)
+                Toggle(isOn: prefs.effectiveArtwork ? $prefs.tintWithArtwork : .constant(false)) {
+                    Text("Colours from the artwork")
+                    Text("Tints the equalizer, progress bar and volume slider with the album's colour.")
+                }
+                .disabled(!prefs.effectiveArtwork)
                 Toggle(isOn: effective(\.showProgressBar)) {
                     Text("Progress bar")
                     Text("Drag it to skip through the song. Updates once a second, only while open.")
                 }
-                .disabled(prefs.lowResourceMode)
+                .disabled(prefs.isLowResource)
                 Toggle(isOn: $prefs.showShuffleRepeat) {
                     Text("Shuffle and repeat buttons")
                     Text("For Spotify and Music. The first click asks to let MusicNotch control the app.")
@@ -258,8 +270,8 @@ private struct NotchSettings: View {
             } header: {
                 Text("In the open notch")
             } footer: {
-                if prefs.lowResourceMode {
-                    LowResourceNote(text: "Low-resource mode turns off the artwork and progress bar.")
+                if prefs.isLowResource {
+                    LowResourceNote(text: "Low-resource mode turns off glass, the artwork and the progress bar.")
                 }
             }
         }
@@ -267,7 +279,7 @@ private struct NotchSettings: View {
 
     /// While low-resource mode is on, a switch shows as off and can't be changed.
     private func effective(_ keyPath: ReferenceWritableKeyPath<Preferences, Bool>) -> Binding<Bool> {
-        prefs.lowResourceMode ? .constant(false) : $prefs[dynamicMember: keyPath]
+        prefs.isLowResource ? .constant(false) : $prefs[dynamicMember: keyPath]
     }
 }
 
@@ -278,23 +290,23 @@ private struct AnimationSettings: View {
     var body: some View {
         SettingsPane {
             Section {
-                Picker(selection: prefs.lowResourceMode ? .constant(.instant) : $prefs.openAnimation) {
+                Picker(selection: prefs.isLowResource ? .constant(.instant) : $prefs.openAnimation) {
                     ForEach(OpenAnimation.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Open animation")
                     Text("How the notch opens and closes.")
                 }
-                .disabled(prefs.lowResourceMode)
+                .disabled(prefs.isLowResource)
             }
 
             Section {
-                Picker(selection: prefs.lowResourceMode ? .constant(.none) : $prefs.spaceSwitchAnimation) {
+                Picker(selection: prefs.isLowResource ? .constant(.none) : $prefs.spaceSwitchAnimation) {
                     ForEach(SpaceSwitchAnimation.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Appear on the new desktop")
                     Text("Fade fades the whole notch in. Slide also brings the artwork and bars in from the side the new desktop came from.")
                 }
-                .disabled(prefs.lowResourceMode)
+                .disabled(prefs.isLowResource)
                 Toggle(isOn: hideDuringSwipes) {
                     Text("Hide while swiping")
                     Text("Hides the notch as soon as a swipe starts, instead of letting it leave with the old desktop. Needs the Input Monitoring permission; MusicNotch only listens for the Dock's swipe gesture.")
@@ -311,7 +323,7 @@ private struct AnimationSettings: View {
             } header: {
                 Text("Switching desktops")
             } footer: {
-                if prefs.lowResourceMode {
+                if prefs.isLowResource {
                     LowResourceNote(text: "Low-resource mode turns the animations off.")
                 }
             }
@@ -364,25 +376,34 @@ private struct PerformanceSettings: View {
             Section {
                 Toggle(isOn: $prefs.lowResourceMode) {
                     Text("Low-resource mode")
-                    Text("The lowest power use in one switch: turns off the animations, artwork and progress bar, and batches updates once a second.")
+                    Text("The lowest power use in one switch: turns off the animations, glass, artwork and progress bar, and batches updates once a second.")
+                }
+                Toggle(isOn: $prefs.followLowPowerMode) {
+                    Text("Turn on with Low Power Mode")
+                    Text("While macOS's Low Power Mode is on, so is low-resource mode.")
+                }
+                .disabled(prefs.lowResourceMode)
+            } footer: {
+                if prefs.isLowResourceForLowPowerMode {
+                    LowResourceNote(text: "Low Power Mode is on, so low-resource mode is too.")
                 }
             }
 
             Section {
-                Picker(selection: prefs.lowResourceMode ? .constant(.never) : $prefs.equalizerAnimation) {
+                Picker(selection: prefs.isLowResource ? .constant(.never) : $prefs.equalizerAnimation) {
                     ForEach(EqualizerAnimation.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Equalizer animation")
                     Text("The moving bars are the only thing that uses power continuously. Otherwise they stay still.")
                 }
-                Picker(selection: prefs.lowResourceMode ? .constant(.batterySaver) : $prefs.updateBatching) {
+                Picker(selection: prefs.isLowResource ? .constant(.batterySaver) : $prefs.updateBatching) {
                     ForEach(UpdateBatching.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Update batching")
                     Text("Groups bursts of track changes into fewer updates.")
                 }
             }
-            .disabled(prefs.lowResourceMode)
+            .disabled(prefs.isLowResource)
         }
     }
 }

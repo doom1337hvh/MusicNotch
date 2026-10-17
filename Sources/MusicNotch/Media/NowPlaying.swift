@@ -7,8 +7,78 @@ import Observation
 struct Artwork: @unchecked Sendable, Equatable {
     let id: Int
     let image: CGImage
+    /// The artwork's most vivid colour, made bright enough to stand out on black; nil for
+    /// artwork that's black and white. Worked out once, when the artwork arrives.
+    let tint: CGColor?
+
+    init(id: Int, image: CGImage) {
+        self.id = id
+        self.image = image
+        tint = Self.vividColor(in: image)
+    }
 
     static func == (lhs: Artwork, rhs: Artwork) -> Bool { lhs.id == rhs.id }
+
+    /// Groups a small copy's pixels by hue, weighted by how vivid each is, and takes the
+    /// average colour of the strongest group.
+    private static func vividColor(in image: CGImage) -> CGColor? {
+        let side = 24
+        guard let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = context.data
+        else { return nil }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        let pixels = data.bindMemory(to: UInt8.self, capacity: side * side * 4)
+
+        let groups = 24
+        var weights = [Double](repeating: 0, count: groups)
+        var sums = [(r: Double, g: Double, b: Double)](repeating: (0, 0, 0), count: groups)
+        for index in 0..<(side * side) {
+            let r = Double(pixels[index * 4]) / 255, g = Double(pixels[index * 4 + 1]) / 255
+            let b = Double(pixels[index * 4 + 2]) / 255
+            let (hue, saturation, brightness) = hsb(r, g, b)
+            let weight = saturation * saturation * brightness
+            guard brightness > 0.15, weight > 0.02 else { continue }
+            let group = min(Int(hue * Double(groups)), groups - 1)
+            weights[group] += weight
+            sums[group] = (sums[group].r + r * weight, sums[group].g + g * weight, sums[group].b + b * weight)
+        }
+        // Neighbouring hues count together, so a gradient isn't split between groups.
+        let smoothed = weights.indices.map { weights[$0] + 0.5 * (weights[($0 + groups - 1) % groups] + weights[($0 + 1) % groups]) }
+        guard let best = smoothed.indices.max(by: { smoothed[$0] < smoothed[$1] }),
+              smoothed[best] > Double(side * side) * 0.02, weights[best] > 0
+        else { return nil }
+        let average = (sums[best].r / weights[best], sums[best].g / weights[best], sums[best].b / weights[best])
+        let (hue, saturation, brightness) = hsb(average.0, average.1, average.2)
+        let (r, g, b) = rgb(hue, min(max(saturation, 0.45), 0.85), max(brightness, 0.9))
+        return CGColor(srgbRed: r, green: g, blue: b, alpha: 1)
+    }
+
+    private static func hsb(_ r: Double, _ g: Double, _ b: Double) -> (Double, Double, Double) {
+        let high = max(r, g, b), low = min(r, g, b), range = high - low
+        guard range > 0 else { return (0, 0, high) }
+        var hue: Double
+        if high == r { hue = (g - b) / range } else if high == g { hue = 2 + (b - r) / range } else { hue = 4 + (r - g) / range }
+        hue /= 6
+        if hue < 0 { hue += 1 }
+        return (hue, range / high, high)
+    }
+
+    private static func rgb(_ hue: Double, _ saturation: Double, _ brightness: Double) -> (Double, Double, Double) {
+        let sector = hue * 6, chroma = brightness * saturation
+        let x = chroma * (1 - abs(sector.truncatingRemainder(dividingBy: 2) - 1)), m = brightness - chroma
+        let (r, g, b): (Double, Double, Double) = switch Int(sector) % 6 {
+        case 0: (chroma, x, 0)
+        case 1: (x, chroma, 0)
+        case 2: (0, chroma, x)
+        case 3: (0, x, chroma)
+        case 4: (x, 0, chroma)
+        default: (chroma, 0, x)
+        }
+        return (r + m, g + m, b + m)
+    }
 }
 
 struct NowPlayingSnapshot: Sendable, Equatable {
