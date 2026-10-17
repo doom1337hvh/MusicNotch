@@ -104,7 +104,12 @@ final class NotchController {
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.updateVisibility() }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.updateVisibility()
+                // Coming back from allowing Input Monitoring in System Settings: start listening.
+                if self.prefs.hideDuringSwipes && !self.pinsPanels { self.updateSwipeMonitoring() }
+            }
         }
         swipes.onSwipeBegan = { [weak self] in
             if DemoShot.current == nil { self?.swipeBegan() }

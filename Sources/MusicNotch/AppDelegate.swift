@@ -1,7 +1,7 @@
 import AppKit
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let prefs = Preferences()
     private let model = NowPlaying()
     private let adapter = AdapterProcess()
@@ -106,6 +106,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showDemo(shot)
         } else {
             adapter.start(options: prefs.adapterOptions)
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                self?.warnIfSwipePermissionMissing()
+            }
+        }
+    }
+
+    /// "Hide while swiping" is on, but macOS doesn't let MusicNotch see the swipe gesture.
+    private var swipePermissionMissing: Bool {
+        prefs.hideDuringSwipes && !SwipeMonitor.hasPermission
+    }
+
+    /// macOS can drop the Input Monitoring permission, after an update for example, and
+    /// "Hide while swiping" then silently does nothing. So say so at launch.
+    private func warnIfSwipePermissionMissing() {
+        guard swipePermissionMissing else { return }
+        showSwipePermissionAlert()
+    }
+
+    @objc private func showSwipePermissionAlert() {
+        let alert = NSAlert()
+        alert.messageText = "“Hide while swiping” needs Input Monitoring"
+        alert.informativeText = """
+            macOS isn't letting MusicNotch see the swipe between desktops, so the notch can't \
+            hide while you swipe. This can happen after an update.
+
+            In System Settings → Privacy & Security → Input Monitoring, remove MusicNotch if \
+            it's listed, then add it again with + and turn it on. Open System Settings also \
+            shows MusicNotch in Finder, so you can drag it into the list.
+
+            MusicNotch only listens for the swipe gesture: no keystrokes, no clicks.
+            """
+        alert.addButton(withTitle: "Open System Settings")
+        alert.addButton(withTitle: "Turn Off Hide While Swiping")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate()
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: SwipeMonitor.openPermissionSettings()
+        case .alertSecondButtonReturn: prefs.hideDuringSwipes = false
+        default: break
         }
     }
 
@@ -178,6 +218,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
             item.button?.image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "MusicNotch")
             item.menu = makeMenu()
+            // Rebuilt each time it opens, so the permission warning is up to date.
+            item.menu?.delegate = self
             statusItem = item
         } else if !prefs.showMenuBarIcon, let item = statusItem {
             NSStatusBar.system.removeStatusItem(item)
@@ -187,6 +229,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        fill(menu)
+        return menu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        fill(menu)
+    }
+
+    private func fill(_ menu: NSMenu) {
+        if swipePermissionMissing {
+            let warning = NSMenuItem(title: "Allow Input Monitoring for “Hide while swiping”…",
+                                     action: #selector(showSwipePermissionAlert), keyEquivalent: "")
+            warning.target = self
+            warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
+            menu.addItem(warning)
+            menu.addItem(.separator())
+        }
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -194,7 +254,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let quitItem = NSMenuItem(title: "Quit MusicNotch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.target = NSApp
         menu.addItem(quitItem)
-        return menu
     }
 
     @objc private func showSettings() {

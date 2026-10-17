@@ -35,6 +35,15 @@ final class SwipeMonitor {
     /// Shows the system prompt the first time; afterwards the user has to allow it in System Settings.
     static func requestPermission() { _ = CGRequestListenEventAccess() }
 
+    /// Shows MusicNotch in Finder and opens System Settings at Input Monitoring on top of it,
+    /// so the app is ready to drag into the list (or add with +).
+    static func openPermissionSettings() {
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     /// Starts listening if allowed. Returns whether it's listening.
     @discardableResult
     func start() -> Bool {

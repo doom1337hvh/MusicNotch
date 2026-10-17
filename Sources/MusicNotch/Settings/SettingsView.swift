@@ -43,9 +43,7 @@ final class SwipePermission {
     }
 
     func openSystemSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(url)
-        }
+        SwipeMonitor.openPermissionSettings()
     }
 }
 
@@ -290,10 +288,13 @@ private struct AnimationSettings: View {
                     Text("Hides the notch as soon as a swipe starts, instead of letting it leave with the old desktop. Needs the Input Monitoring permission; MusicNotch only listens for the Dock's swipe gesture.")
                 }
                 if prefs.hideDuringSwipes && !swipePermission.isAllowed {
-                    LabeledContent("Allow MusicNotch under Input Monitoring, then reopen this window.") {
+                    LabeledContent {
                         Button("Open System Settings") { swipePermission.openSystemSettings() }
+                    } label: {
+                        Text("\(Image(systemName: "exclamationmark.triangle.fill")) Needs Input Monitoring")
+                            .foregroundStyle(.orange)
+                        Text("In Input Monitoring, remove MusicNotch if it's listed, then add it again with + and turn it on.")
                     }
-                    .foregroundStyle(.secondary)
                 }
             } header: {
                 Text("Switching desktops")
