@@ -121,6 +121,7 @@ final class Preferences {
         static let notchStyle = "notchStyle"
         static let openTrigger = "notchOpenTrigger"
         static let showTrackPeek = "showTrackPeek"
+        static let showBesideNotch = "showBesideNotch"
         static let showShuffleRepeat = "showShuffleRepeat"
         static let hideInFullScreen = "hideInFullScreen"
         static let openFromCameraOnly = "openFromCameraOnly"
@@ -156,6 +157,14 @@ final class Preferences {
     }
     var openTrigger: NotchOpenTrigger {
         didSet { defaults.set(openTrigger.rawValue, forKey: Key.openTrigger) }
+    }
+    /// The artwork and equalizer beside the closed notch. Off, the closed notch shows nothing
+    /// until it's hovered over, like the plain camera housing.
+    var showBesideNotch: Bool {
+        didSet {
+            defaults.set(showBesideNotch, forKey: Key.showBesideNotch)
+            onDisplayOptionsChange?()
+        }
     }
     /// Briefly opens the notch to show a new track when the song changes.
     var showTrackPeek: Bool {
@@ -249,6 +258,7 @@ final class Preferences {
         openTrigger = (defaults.object(forKey: Key.openTrigger) as? Int)
             .flatMap(NotchOpenTrigger.init(rawValue:)) ?? .hover
         showTrackPeek = bool(Key.showTrackPeek, true)
+        showBesideNotch = bool(Key.showBesideNotch, true)
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
         openFromCameraOnly = bool(Key.openFromCameraOnly, true)
         hideInFullScreen = (defaults.object(forKey: Key.hideInFullScreen) as? Int)

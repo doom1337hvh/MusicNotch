@@ -31,7 +31,7 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 - **New-track peek:** when the song changes, the notch briefly shows it.
 - **Keyboard shortcuts** for opening the notch, play/pause and skipping, in any app.
 - **Hides in full screen**, for example while you watch a video.
-- **Stays out of your menu bar's way:** by default only the camera area opens the notch, so menu bar items beside it stay easy to click.
+- **Stays out of your menu bar's way:** by default only the camera area opens the notch, so menu bar items beside it stay easy to click. It can also show nothing at all until you hover over it.
 - **Built for battery life:** no polling and no Dock icon, and the app is under 2 MB. See [Battery](#battery).
 
 Everything above can be switched off or changed in Settings.
@@ -120,11 +120,14 @@ Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by ope
 - **Show on displays without a notch:** adds a small pill to the top of external displays (off by default).
 - **Hide in full screen:** *When the playing app is* (default) hides it for a full-screen video, but not while music plays behind another full-screen app. The other choices are *In any full-screen app* and *Never*.
 
-**Notch.** *Opening*:
+**Notch.** *When closed*:
+- **Show artwork and bars beside the notch** (on by default): turn it off and nothing shows until you hover over the notch, so it looks like the plain camera housing.
+- **Show new tracks** (on by default): briefly shows the new song when the track changes.
+
+*Opening*:
 - **Style:** Minimal, Compact or Full (default).
 - **Open on:** Hover (default) or Click.
 - **Only open from the camera** (on by default): the closed notch's sides let clicks through to the menu bar, and only the camera area opens it.
-- **Show new tracks** (on by default): briefly shows the new song when the track changes.
 
 *In the open notch*: album artwork, the progress bar (drag it to seek), shuffle and repeat buttons (for Spotify and Music), and whether clicking the artwork opens the playing app.
 

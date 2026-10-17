@@ -263,10 +263,11 @@ private final class NotchPanelController {
         self.model = model
         self.prefs = prefs
         state = NotchState(geometry: geometry)
-        panel = NotchPanel(frame: geometry.frame(for: geometry.collapsedSize), pinned: space != nil)
+        panel = NotchPanel(frame: geometry.frame(for: geometry.closedSize(showsContent: prefs.showBesideNotch)),
+                           pinned: space != nil)
         // A few points inside the camera housing on each side and at the bottom.
         hotspot = prefs.openFromCameraOnly && geometry.hasNotch
-            ? NotchHotspot(frame: geometry.frame(for: CGSize(width: geometry.notchWidth - 16, height: geometry.height - 6)),
+            ? NotchHotspot(frame: geometry.frame(for: geometry.insideHousingSize),
                            pinned: space != nil)
             : nil
 
@@ -328,7 +329,7 @@ private final class NotchPanelController {
             state.isPeeking = false
             state.isTrackPeek = false
             state.showsVolume = false
-            setWindowSize(state.geometry.collapsedSize)
+            setWindowSize(closedSize)
             panel.orderOut(nil)
             updateMouseHandling()
         }
@@ -423,7 +424,7 @@ private final class NotchPanelController {
     /// straight away, and the animation only starts once the window is on screen.
     private func animateIn(from start: AppearStart, curve: Animation) {
         // Room around the closed notch, so a bounce or zoom isn't cut off by the window edges.
-        let bar = state.geometry.collapsedSize
+        let bar = closedSize
         setWindowSize(CGSize(width: bar.width + 2 * Self.overshootMargin, height: bar.height + Self.overshootMargin))
         var noAnimation = Transaction()
         noAnimation.disablesAnimations = true
@@ -441,7 +442,7 @@ private final class NotchPanelController {
                 self?.state.appearContentBlur = 0
             } completion: {
                 guard let self, !self.isOpen else { return }
-                self.setWindowSize(self.state.geometry.collapsedSize)
+                self.setWindowSize(self.closedSize)
             }
         }
         if panel.occlusionState.contains(.visible) {
@@ -488,6 +489,11 @@ private final class NotchPanelController {
 
     private var isOpen: Bool { state.isExpanded || state.isPeeking }
 
+    /// The closed notch's size; see `NotchGeometry.closedSize`.
+    private var closedSize: CGSize {
+        state.geometry.closedSize(showsContent: prefs.showBesideNotch)
+    }
+
     private func collapseImmediately() {
         hoverTask?.cancel()
         trackPeekTask?.cancel()
@@ -497,7 +503,7 @@ private final class NotchPanelController {
         state.isPeeking = false
         state.isTrackPeek = false
         state.showsVolume = false
-        setWindowSize(state.geometry.collapsedSize)
+        setWindowSize(closedSize)
         updateMouseHandling()
     }
 
@@ -588,7 +594,7 @@ private final class NotchPanelController {
     /// A drag on the progress bar may end with the pointer outside the panel; close it
     /// then, as leaving it would have.
     private func scrubEnded() {
-        let shape = state.geometry.frame(for: isOpen && state.isExpanded ? state.expandedSize : state.geometry.collapsedSize)
+        let shape = state.geometry.frame(for: isOpen && state.isExpanded ? state.expandedSize : closedSize)
         guard isOpen, !shape.contains(NSEvent.mouseLocation) else { return }
         hoverChanged(false)
     }
@@ -648,7 +654,7 @@ private final class NotchPanelController {
         keyboardCloseTask?.cancel()
         let shrinkWindow = { [weak self] in
             guard let self, !self.isOpen else { return }
-            self.setWindowSize(self.state.geometry.collapsedSize)
+            self.setWindowSize(self.closedSize)
         }
         if let closing = prefs.effectiveOpenAnimation.closing {
             withAnimation(closing) {

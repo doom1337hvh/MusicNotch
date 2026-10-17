@@ -10,7 +10,10 @@ struct NotchRootView: View {
         let geometry = state.geometry
         let expanded = state.isExpanded
         let peeking = state.isPeeking && !expanded
-        let barSize = peeking ? geometry.peekSize : geometry.collapsedSize
+        // With nothing beside the closed notch, it's hidden inside the camera housing (or,
+        // without a notch, an invisible target) until it opens.
+        let hidesClosed = !prefs.showBesideNotch && !expanded && !peeking
+        let barSize = peeking ? geometry.peekSize : geometry.closedSize(showsContent: prefs.showBesideNotch)
         let size = expanded ? state.expandedSize : barSize
         let compact = state.expandedStyle == .compact || state.isTrackPeek
         let sources = SourcesInfo(sessions: model.sessions, displayedID: model.displayedSessionID,
@@ -25,8 +28,8 @@ struct NotchRootView: View {
             }
         }
         let shape = NotchShape(
-            topRadius: expanded ? (compact ? 12 : 14) : (geometry.hasNotch ? 6 : 0),
-            bottomRadius: expanded ? (compact ? 18 : 22) : (geometry.hasNotch ? 10 : geometry.height / 2)
+            topRadius: expanded ? (compact ? 12 : 14) : (geometry.hasNotch && !hidesClosed ? 6 : 0),
+            bottomRadius: expanded ? (compact ? 18 : 22) : (geometry.hasNotch ? (hidesClosed ? 8 : 10) : geometry.height / 2)
         )
 
         ZStack(alignment: .top) {
@@ -53,7 +56,7 @@ struct NotchRootView: View {
                             insertion: prefs.effectiveOpenAnimation.contentArrival,
                             removal: .opacity.animation(.easeOut(duration: 0.12))
                         ))
-                } else {
+                } else if !hidesClosed {
                     CollapsedView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
                                   sources: sources, isPeeking: peeking, onArtworkTap: artworkTap)
                         .frame(width: barSize.width, height: geometry.height)
@@ -68,7 +71,8 @@ struct NotchRootView: View {
         // The content keeps its final size, centered at the top, and the growing shape
         // reveals it evenly on both sides instead of reflowing it on every frame.
         .frame(width: size.width, height: size.height, alignment: .top)
-        .background(shape.fill(.black))
+        // An invisible target still needs a little opacity to catch the pointer.
+        .background(shape.fill(.black.opacity(hidesClosed && !geometry.hasNotch ? 0.01 : 1)))
         .clipShape(shape)
         .contentShape(shape)
         // Desktop-switch Zoom and Bounce; at rest this does nothing.

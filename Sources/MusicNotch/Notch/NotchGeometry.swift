@@ -35,6 +35,20 @@ struct NotchGeometry: Equatable {
         CGSize(width: (hasNotch ? notchWidth : 8) + 2 * wingWidth, height: height)
     }
 
+    /// Just inside the camera housing, where nothing drawn can be seen: the camera-area
+    /// target, and the closed notch with nothing beside it.
+    var insideHousingSize: CGSize {
+        CGSize(width: notchWidth - 16, height: height - 6)
+    }
+
+    /// The closed notch: the artwork and bars beside the camera, or with nothing beside it,
+    /// just inside the camera housing. Screens without a notch get an invisible target the
+    /// size of one instead.
+    func closedSize(showsContent: Bool) -> CGSize {
+        guard !showsContent else { return collapsedSize }
+        return hasNotch ? insideHousingSize : CGSize(width: 180, height: height)
+    }
+
     /// Room for a skip button on each side when the notch widens on hover (Minimal style).
     var peekButtonWidth: CGFloat { 34 }
 

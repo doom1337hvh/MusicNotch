@@ -199,6 +199,17 @@ private struct NotchSettings: View {
 
     var body: some View {
         SettingsPane {
+            Section("When closed") {
+                Toggle(isOn: $prefs.showBesideNotch) {
+                    Text("Show artwork and bars beside the notch")
+                    Text("When off, nothing shows until you hover over the notch, and the equalizer uses no power.")
+                }
+                Toggle(isOn: $prefs.showTrackPeek) {
+                    Text("Show new tracks")
+                    Text("When the song changes, the notch briefly opens to show it.")
+                }
+            }
+
             Section("Opening") {
                 Picker(selection: $prefs.notchStyle) {
                     ForEach(NotchStyle.allCases) { Text($0.label).tag($0) }
@@ -215,10 +226,6 @@ private struct NotchSettings: View {
                 Toggle(isOn: $prefs.openFromCameraOnly) {
                     Text("Only open from the camera")
                     Text("The closed notch's sides let the pointer through to the menu bar.")
-                }
-                Toggle(isOn: $prefs.showTrackPeek) {
-                    Text("Show new tracks")
-                    Text("When the song changes, the notch briefly opens to show it.")
                 }
             }
 
