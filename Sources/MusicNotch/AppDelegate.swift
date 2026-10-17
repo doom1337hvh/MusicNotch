@@ -164,6 +164,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try? await Task.sleep(for: .milliseconds(600))
             self?.notch?.showDemo(shot)
             if shot == .settings { self?.settings.show() }
+            if shot == .tour { await self?.runTour() }
+        }
+    }
+
+    /// Plays `DemoShot.tourSteps` for the video. Its start time (`CACurrentMediaTime`) goes
+    /// to the file named by `-demoClock`, so the recorder can line up its drawn pointer.
+    private func runTour() async {
+        // Gives the recorder time to start capturing first.
+        try? await Task.sleep(for: .seconds(2))
+        let start = CACurrentMediaTime()
+        if let clock = UserDefaults.standard.string(forKey: "demoClock") {
+            try? String(start).write(toFile: clock, atomically: true, encoding: .utf8)
+        }
+        var track = 0
+        for (time, step) in DemoShot.tourSteps {
+            let wait = start + time - CACurrentMediaTime()
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            switch step {
+            case .playing(let playing):
+                model.receive(DemoShot.tourUpdate(track: track, playing: playing))
+            case .track(let next):
+                track = next
+                model.receive(DemoShot.tourUpdate(track: next, playing: true))
+            default:
+                notch?.runDemoStep(step)
+            }
         }
     }
 

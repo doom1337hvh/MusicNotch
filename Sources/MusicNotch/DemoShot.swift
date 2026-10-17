@@ -13,10 +13,37 @@ enum DemoShot: String {
     case newTrack = "new-track"
     case search
     case settings
+    /// The README video (scripts/make-video.swift): a scripted tour, see `tourSteps`.
+    case tour
 
     /// The shot asked for on the command line, if any. (`-demo full` lands in UserDefaults'
     /// argument domain, which is never saved.)
     static let current = UserDefaults.standard.string(forKey: "demo").flatMap(DemoShot.init(rawValue:))
+
+    /// The tour, in seconds from its start. scripts/make-video.swift moves the drawn pointer
+    /// to match, so keep the two in step.
+    static let tourSteps: [(time: Double, step: DemoStep)] = [
+        (1.4, .open(.full)),
+        (3.0, .playing(false)),
+        (4.6, .playing(true)),
+        (6.2, .startSearch),
+        (6.7, .search(text: "n", results: nil)),
+        (6.9, .search(text: "ne", results: nil)),
+        (7.1, .search(text: "neo", results: nil)),
+        (7.3, .search(text: "neon", results: nil)),
+        (7.8, .search(text: "neon", results: searchResults)),
+        // Choosing "Neon Tides" closes the notch; the new track then peeks out by itself.
+        (9.2, .closeSearch),
+        (9.6, .track(1)),
+    ]
+
+    /// The tour's tracks, all from Music so its search shows results in the notch.
+    static func tourUpdate(track: Int, playing: Bool) -> SessionsUpdate {
+        let music = track == 1
+            ? session("com.apple.Music", "Neon Tides", "Lumen Drive", playing: playing, duration: 222, elapsed: 0, art: 1)
+            : session("com.apple.Music", "Glass Gardens", "Aurora Bay", playing: playing, duration: 198, elapsed: 40, art: 3)
+        return SessionsUpdate(sessions: [music], electedBundleID: music.id)
+    }
 
     /// Shuffle on, repeat off, so both button states show.
     static let modes = PlaybackModes(shuffle: true, repeatMode: .off)
@@ -30,6 +57,7 @@ enum DemoShot: String {
     ]
 
     var update: SessionsUpdate {
+        if self == .tour { return Self.tourUpdate(track: 0, playing: true) }
         if self == .search {
             let music = Self.session("com.apple.Music", "Glass Gardens", "Aurora Bay", playing: true,
                                      duration: 198, elapsed: 40, art: 3)
@@ -131,4 +159,16 @@ enum DemoShot: String {
         }
         return context.makeImage()
     }
+}
+
+/// One step of the tour (`DemoShot.tourSteps`).
+enum DemoStep {
+    case open(NotchStyle)
+    case playing(Bool)
+    case startSearch
+    case search(text: String, results: [SearchResult]?)
+    /// As if a result was chosen: the search closes, and the notch with it.
+    case closeSearch
+    /// Switches to one of `DemoShot.tourUpdate`'s tracks.
+    case track(Int)
 }

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/full.png" width="820" alt="The open notch: album art, title and artist, a progress bar, and shuffle, previous, pause, next, repeat and volume buttons">
+  <img src="docs/demo.gif" width="820" alt="MusicNotch in action: hovering opens the notch, pausing turns the equalizer bars into a pause icon, a search finds a song in the Music library, and the new track peeks out">
 </p>
 
 <p align="center">
@@ -38,6 +38,11 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 Everything above can be switched off or changed in Settings.
 
 ## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/full.png" width="820" alt="The open notch: album art, title and artist, a progress bar, and search, shuffle, previous, pause, next, repeat and volume buttons"><br>
+  <sub><b>Full:</b> the artwork, a progress bar you can drag, and every control.</sub>
+</p>
 
 <p align="center">
   <img src="docs/screenshots/closed.png" width="820" alt="The closed notch, with album art to the left of the camera and equalizer bars to the right"><br>
@@ -210,7 +215,7 @@ The app is built to `build/MusicNotch.app`. `scripts/build.sh --install` also co
 
 Optionally, run `scripts/create-signing-cert.sh` once first. It makes a local code-signing certificate, so the permissions you grant survive rebuilds; otherwise each build is signed ad hoc and macOS treats it as a new app. To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
-The screenshots above come from the real app, showing made-up tracks. After a build, `swift scripts/make-screenshots.swift` captures them again into `docs/screenshots`; it needs the Screen Recording permission and a MacBook with a notch.
+The screenshots and the video above come from the real app, showing made-up tracks. After a build, `swift scripts/make-screenshots.swift` captures the screenshots again into `docs/screenshots`, and `swift scripts/make-video.swift` records the tour into `docs/demo.gif` (plus `docs/demo.mp4` for sharing). Both need the Screen Recording permission and a MacBook with a notch.
 
 ### How it works
 

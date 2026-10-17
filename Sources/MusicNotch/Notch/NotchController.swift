@@ -201,6 +201,11 @@ final class NotchController {
         panels.forEach { $0.showDemo(shot) }
     }
 
+    /// Acts out a step of the recorded tour (see `DemoShot.tourSteps`).
+    func runDemoStep(_ step: DemoStep) {
+        panels.forEach { $0.runDemoStep(step) }
+    }
+
     /// The keyboard shortcut: opens or closes the notch on the screen with the pointer, or
     /// else the built-in display.
     func toggleFromKeyboard() {
@@ -558,7 +563,7 @@ private final class NotchPanelController {
     /// Opens the notch in a README screenshot's state, without waiting for the pointer.
     func showDemo(_ shot: DemoShot) {
         switch shot {
-        case .closed, .settings: break
+        case .closed, .settings, .tour: break
         case .minimal: peek()
         case .compact: expand(style: .compact)
         case .full, .sources: expand(style: .full)
@@ -569,6 +574,20 @@ private final class NotchPanelController {
             state.search?.text = DemoShot.searchText
             state.search?.results = DemoShot.searchResults
             resizeForSearch()
+        }
+    }
+
+    func runDemoStep(_ step: DemoStep) {
+        switch step {
+        case .open(let style): if style == .minimal { peek() } else { expand(style: style) }
+        case .startSearch: startSearch()
+        case .search(let text, let results):
+            state.search?.text = text
+            state.search?.results = results
+            resizeForSearch()
+        case .closeSearch: endSearch(thenCollapse: true)
+        // The app delegate changes what's playing.
+        case .playing, .track: break
         }
     }
 

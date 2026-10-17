@@ -174,7 +174,11 @@ private struct SearchField: NSViewRepresentable {
 
     func updateNSView(_ field: FocusingTextField, context: Context) {
         context.coordinator.send = send
-        if field.stringValue != text { field.stringValue = text }
+        if field.stringValue != text {
+            field.stringValue = text
+            // Setting the text selects it all while editing; keep the cursor after it instead.
+            field.currentEditor()?.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+        }
         field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
             .foregroundColor: NSColor.white.withAlphaComponent(0.4), .font: NSFont.systemFont(ofSize: 13),
         ])
