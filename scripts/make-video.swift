@@ -50,7 +50,7 @@ let settings = [
     "showProgressBar": "<true/>", "lowResourceMode": "<false/>", "hideDuringSwipes": "<false/>",
     "hideInFullScreen": "<integer>0</integer>", "showMenuBarIcon": "<false/>", "settingsTab": "<integer>0</integer>",
     "updateBatching": "<integer>150</integer>", "openFromCameraOnly": "<true/>", "clickArtworkOpensApp": "<true/>",
-    "showOnExternalDisplays": "<false/>", "notchTheme": "<integer>0</integer>", "tintWithArtwork": "<true/>", "followLowPowerMode": "<false/>",
+    "showOnExternalDisplays": "<false/>", "notchTheme": "<integer>0</integer>", "accentColour": "<integer>0</integer>", "followLowPowerMode": "<false/>",
 ]
 /// The Settings clip shows every setting at its default.
 let settingsDefaults = [

@@ -127,6 +127,25 @@ enum NotchTheme: Int, CaseIterable, Identifiable {
     }
 }
 
+/// The colour of the equalizer, progress bar and volume slider.
+enum AccentColour: Int, CaseIterable, Identifiable {
+    /// The artwork's most vivid colour.
+    case artwork = 0
+    case white = 1
+    /// `Preferences.solidColour`.
+    case solid = 2
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .artwork: "From the artwork"
+        case .white: "White"
+        case .solid: "Solid colour"
+        }
+    }
+}
+
 /// User settings, saved to UserDefaults.
 ///
 /// Views and the notch read the `effective…` values, which apply low-resource mode
@@ -148,7 +167,8 @@ final class Preferences {
         static let showMenuBarIcon = "showMenuBarIcon"
         static let lowResourceMode = "lowResourceMode"
         static let followLowPowerMode = "followLowPowerMode"
-        static let tintWithArtwork = "tintWithArtwork"
+        static let accentColour = "accentColour"
+        static let solidColour = "solidColour"
         static let equalizerAnimation = "equalizerAnimation"
         static let showArtwork = "showArtwork"
         static let showProgressBar = "showProgressBar"
@@ -244,9 +264,12 @@ final class Preferences {
             onAdapterOptionsChange?()
         }
     }
-    /// Tints the equalizer, progress bar and volume slider with the artwork's colour.
-    var tintWithArtwork: Bool {
-        didSet { defaults.set(tintWithArtwork, forKey: Key.tintWithArtwork) }
+    var accentColour: AccentColour {
+        didSet { defaults.set(accentColour.rawValue, forKey: Key.accentColour) }
+    }
+    /// The colour for `AccentColour.solid`.
+    var solidColour: CGColor {
+        didSet { defaults.set(Self.components(of: solidColour), forKey: Key.solidColour) }
     }
     var showArtwork: Bool {
         didSet {
@@ -308,7 +331,10 @@ final class Preferences {
         showMenuBarIcon = bool(Key.showMenuBarIcon, true)
         lowResourceMode = bool(Key.lowResourceMode, false)
         followLowPowerMode = bool(Key.followLowPowerMode, true)
-        tintWithArtwork = bool(Key.tintWithArtwork, true)
+        accentColour = (defaults.object(forKey: Key.accentColour) as? Int)
+            .flatMap(AccentColour.init(rawValue:)) ?? .artwork
+        solidColour = (defaults.array(forKey: Key.solidColour) as? [Double])
+            .flatMap(Self.colour(from:)) ?? Self.defaultSolidColour
         equalizerAnimation = (defaults.object(forKey: Key.equalizerAnimation) as? Int)
             .flatMap(EqualizerAnimation.init(rawValue:)) ?? .whenPluggedIn
         showArtwork = bool(Key.showArtwork, true)
@@ -350,10 +376,27 @@ final class Preferences {
     /// Low-resource mode is on only because macOS's Low Power Mode is.
     var isLowResourceForLowPowerMode: Bool { !lowResourceMode && followLowPowerMode && power.isLowPowerMode }
 
-    /// The colour for the equalizer and bars: the artwork's, while "Colours from the artwork"
-    /// is on and artwork is shown; nil for white.
+    /// The colour for the equalizer and bars; nil for white, including while the artwork
+    /// they'd take it from isn't shown or has no colour.
     func accent(for snapshot: NowPlayingSnapshot) -> CGColor? {
-        tintWithArtwork && effectiveArtwork ? snapshot.artwork?.tint : nil
+        switch accentColour {
+        case .artwork: effectiveArtwork ? snapshot.artwork?.tint : nil
+        case .white: nil
+        case .solid: solidColour
+        }
+    }
+
+    static let defaultSolidColour = CGColor(srgbRed: 1, green: 0.216, blue: 0.373, alpha: 1)
+
+    /// Saved as sRGB red, green and blue.
+    private static func components(of colour: CGColor) -> [Double] {
+        let sRGB = colour.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil)
+        return (sRGB?.components ?? []).prefix(3).map(Double.init)
+    }
+
+    private static func colour(from components: [Double]) -> CGColor? {
+        guard components.count == 3 else { return nil }
+        return CGColor(srgbRed: components[0], green: components[1], blue: components[2], alpha: 1)
     }
 
     /// The animated bars are the app's only ongoing energy cost (the window server redraws

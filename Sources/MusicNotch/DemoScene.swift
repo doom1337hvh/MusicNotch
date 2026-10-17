@@ -88,7 +88,7 @@ enum DemoScene: String {
         case .newTrack:
             [(1.0, .track(2))]
         case .settings:
-            [(1.4, .settingsTab(2)), (2.8, .settingsTab(3)), (4.2, .settingsTab(4)), (5.6, .settingsTab(5))]
+            [(1.4, .settingsTab(3)), (2.8, .settingsTab(4)), (4.2, .settingsTab(5)), (5.6, .settingsTab(6))]
         }
     }
 

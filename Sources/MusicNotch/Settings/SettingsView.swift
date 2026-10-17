@@ -48,7 +48,8 @@ final class SwipePermission {
 }
 
 /// Creates the Settings window when it's opened and releases it when it's closed. It has a
-/// tab per topic in its toolbar, like most Mac apps' settings, and fits each tab's height.
+/// tab per topic in its toolbar, like most Mac apps' settings, and fits each tab's height up
+/// to what fits on the screen.
 @MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     var onBecameKey: (() -> Void)?
@@ -74,6 +75,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                                          GeneralSettings(prefs: prefs, loginItem: LoginItem())))
             tabs.addTabViewItem(Self.tab("Notch", symbol: "rectangle.topthird.inset.filled",
                                          NotchSettings(prefs: prefs)))
+            tabs.addTabViewItem(Self.tab("Appearance", symbol: "paintpalette", AppearanceSettings(prefs: prefs)))
             tabs.addTabViewItem(Self.tab("Animations", symbol: "sparkles",
                                          AnimationSettings(prefs: prefs, swipePermission: swipePermission)))
             tabs.addTabViewItem(Self.tab("Shortcuts", symbol: "keyboard",
@@ -96,7 +98,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private static func tab<Content: View>(_ title: String, symbol: String, _ content: Content) -> NSTabViewItem {
         let host = NSHostingController(rootView: content)
-        // The window takes each tab's own height.
+        // The window takes each tab's own height (see `SettingsPane`).
         host.sizingOptions = [.preferredContentSize]
         host.title = title
         let item = NSTabViewItem(viewController: host)
@@ -146,16 +148,36 @@ private final class SettingsTabs: NSTabViewController {
     }
 }
 
-/// One tab's form, as tall as its contents.
+/// One tab's form, as tall as its contents up to `maxHeight`; a longer one scrolls.
 private struct SettingsPane<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        Form(content: content)
-            .formStyle(.grouped)
-            .scrollDisabled(true)
-            .frame(width: 460)
-            .fixedSize(horizontal: false, vertical: true)
+        CappedHeight(maxHeight: Self.maxHeight) {
+            Form(content: content)
+                .formStyle(.grouped)
+        }
+        .frame(width: 500)
+    }
+
+    /// Leaves room for the title bar and toolbar, and some desktop below, on any screen.
+    private static var maxHeight: CGFloat {
+        min(560, (NSScreen.main?.visibleFrame.height ?? 800) - 180)
+    }
+}
+
+/// Takes its content's own height, but no more than `maxHeight`.
+private struct CappedHeight: Layout {
+    let maxHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let content = subviews.first else { return .zero }
+        let ideal = content.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: proposal.width ?? ideal.width, height: min(ideal.height, maxHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
     }
 }
 
@@ -234,25 +256,48 @@ private struct NotchSettings: View {
                     Text("The closed notch's sides let the pointer through to the menu bar.")
                 }
             }
+        }
+    }
+}
 
+private struct AppearanceSettings: View {
+    @Bindable var prefs: Preferences
+
+    var body: some View {
+        SettingsPane {
             Section {
                 Picker(selection: prefs.isLowResource ? .constant(.black) : $prefs.theme) {
                     ForEach(NotchTheme.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Theme")
-                    Text("Glass lets the desktop show through below the camera, fading from black at the top.")
+                    Text("Glass lets the desktop show through, with black fading out around the camera.")
                 }
                 .disabled(prefs.isLowResource)
+                Picker(selection: $prefs.accentColour) {
+                    ForEach(AccentColour.allCases) { Text($0.label).tag($0) }
+                } label: {
+                    Text("Colour")
+                    Text(prefs.accentColour == .artwork && !prefs.effectiveArtwork
+                         ? "Needs the album artwork, so for now it's white."
+                         : "For the equalizer, progress bar and volume slider.")
+                }
+                if prefs.accentColour == .solid {
+                    ColorPicker("Solid colour", selection: $prefs.solidColour, supportsOpacity: false)
+                }
+            } header: {
+                Text("Look")
+            } footer: {
+                if prefs.isLowResource {
+                    LowResourceNote(text: "Low-resource mode turns glass off.")
+                }
+            }
+
+            Section {
                 Toggle(isOn: effective(\.showArtwork)) {
                     Text("Album artwork")
                     Text("When off, artwork isn't loaded at all.")
                 }
                 .disabled(prefs.isLowResource)
-                Toggle(isOn: prefs.effectiveArtwork ? $prefs.tintWithArtwork : .constant(false)) {
-                    Text("Colours from the artwork")
-                    Text("Tints the equalizer, progress bar and volume slider with the album's colour.")
-                }
-                .disabled(!prefs.effectiveArtwork)
                 Toggle(isOn: effective(\.showProgressBar)) {
                     Text("Progress bar")
                     Text("Drag it to skip through the song. Updates once a second, only while open.")
@@ -271,7 +316,7 @@ private struct NotchSettings: View {
                 Text("In the open notch")
             } footer: {
                 if prefs.isLowResource {
-                    LowResourceNote(text: "Low-resource mode turns off glass, the artwork and the progress bar.")
+                    LowResourceNote(text: "Low-resource mode turns off the artwork and progress bar.")
                 }
             }
         }
@@ -309,7 +354,7 @@ private struct AnimationSettings: View {
                 .disabled(prefs.isLowResource)
                 Toggle(isOn: hideDuringSwipes) {
                     Text("Hide while swiping")
-                    Text("Hides the notch as soon as a swipe starts, instead of letting it leave with the old desktop. Needs the Input Monitoring permission; MusicNotch only listens for the Dock's swipe gesture.")
+                    Text("Hides the notch as soon as a swipe starts, instead of letting it leave with the old desktop. Needs Input Monitoring, used only for the Dock's swipe gesture.")
                 }
                 if prefs.hideDuringSwipes && !swipePermission.isAllowed {
                     LabeledContent {

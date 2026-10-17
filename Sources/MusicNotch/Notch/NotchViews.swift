@@ -16,8 +16,6 @@ struct NotchRootView: View {
         let barSize = peeking ? geometry.peekSize : geometry.closedSize(showsContent: prefs.showBesideNotch)
         let size = expanded ? state.expandedSize : barSize
         let compact = state.expandedStyle == .compact || state.isTrackPeek
-        // Minimal stays at the housing's height, where glass would be covered in black.
-        let glass = expanded && prefs.effectiveTheme == .glass && (state.expandedStyle != .minimal || state.isTrackPeek)
         let sources = SourcesInfo(sessions: model.sessions, displayedID: model.displayedSessionID,
                                   canControl: model.canControlDisplayed)
         // On a closed notch with "Open on: Click", the artwork opens the notch like the rest
@@ -80,8 +78,9 @@ struct NotchRootView: View {
         .frame(width: size.width, height: size.height, alignment: .top)
         // An invisible target still needs a little opacity to catch the pointer.
         .background(alignment: .top) {
-            NotchBackground(shape: shape, isGlass: glass,
-                            blackHeight: geometry.hasNotch ? geometry.height : 0,
+            NotchBackground(shape: shape, isGlass: expanded && prefs.effectiveTheme == .glass,
+                            housing: prefs.effectiveTheme == .glass && geometry.hasNotch
+                                ? CGSize(width: geometry.notchWidth, height: geometry.height) : nil,
                             opacity: hidesClosed && !geometry.hasNotch ? 0.01 : 1)
         }
         .clipShape(shape)
