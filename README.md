@@ -9,6 +9,17 @@
   Free, open source, and light on battery.
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/full.png" width="820" alt="The open notch: album art, title and artist, a progress bar, and shuffle, previous, pause, next, repeat and volume buttons">
+</p>
+
+<p align="center">
+  <a href="https://github.com/doom1337hvh/MusicNotch/releases/latest"><b>Download</b></a> ·
+  <a href="#install">Install</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#settings">Settings</a>
+</p>
+
 MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube or SoundCloud in a browser, or any app that reports to macOS's Now Playing) around the notch. The album art sits to the left of the camera and equalizer bars to the right. Hover over the notch to open the controls. When nothing is playing, it disappears.
 
 ## Features
@@ -24,6 +35,33 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 - **Built for battery life:** no polling and no Dock icon, and the app is under 2 MB. See [Battery](#battery).
 
 Everything above can be switched off or changed in Settings.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/closed.png" width="820" alt="The closed notch, with album art to the left of the camera and equalizer bars to the right"><br>
+  <sub><b>Closed:</b> the album art and equalizer bars sit on either side of the camera.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/minimal.png" width="820" alt="The Minimal style: the notch widens to show previous and next buttons"><br>
+  <sub><b>Minimal:</b> hover and the notch widens with skip buttons.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/compact.png" width="820" alt="The Compact style: a small panel with the artwork, title, controls and a thin progress line"><br>
+  <sub><b>Compact:</b> a small panel with the controls in one row.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/sources.png" width="820" alt="The open notch with Spotify, Chrome and Music icons beside the camera"><br>
+  <sub><b>Several apps:</b> each app with media gets an icon beside the camera; click one to switch.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/new-track.png" width="820" alt="A brief banner showing the new track's artwork, title and artist"><br>
+  <sub><b>New track:</b> when the song changes, the notch briefly shows it.</sub>
+</p>
 
 ## Requirements
 
@@ -73,6 +111,10 @@ Keyboard shortcuts use macOS's standard hotkey system and need no permission.
 ## Settings
 
 Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by opening MusicNotch again while it's running (useful if you've hidden the menu bar icon).
+
+<p align="center">
+  <img src="docs/screenshots/settings.png" width="440" alt="The Settings window on its Notch tab">
+</p>
 
 **General:** launch at login and the menu bar icon. Under *Where it appears*:
 - **Show on displays without a notch:** adds a small pill to the top of external displays (off by default).
@@ -156,6 +198,8 @@ The app is built to `build/MusicNotch.app`. `scripts/build.sh --install` also co
 
 Optionally, run `scripts/create-signing-cert.sh` once first. It makes a local code-signing certificate, so the permissions you grant survive rebuilds; otherwise each build is signed ad hoc and macOS treats it as a new app. To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
+The screenshots above come from the real app, showing made-up tracks. After a build, `swift scripts/make-screenshots.swift` captures them again into `docs/screenshots`; it needs the Screen Recording permission and a MacBook with a notch.
+
 ### How it works
 
 `scripts/build.sh` compiles mediaremote-adapter (pinned to v0.7.7) together with MusicNotch's own additions in `Adapter/`, into a small framework that `/usr/bin/perl` loads:
@@ -167,12 +211,13 @@ The app itself is SwiftUI in an AppKit shell:
 ```
 Sources/MusicNotch/
   AppDelegate.swift, main.swift   app lifecycle, menu bar icon
+  DemoShot.swift                  made-up tracks for the README screenshots
   Media/                          adapter process, sessions parser, now-playing model,
                                   AppleScript (volume, shuffle, repeat)
   Notch/                          panels, geometry, views, animations, desktop switching
   Settings/                       preferences, keyboard shortcuts, the Settings window
 Adapter/                          MusicNotch's additions to mediaremote-adapter
-scripts/                          build, release, signing certificate, icon
+scripts/                          build, release, signing certificate, icon, screenshots
 ```
 
 ## License

@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             readModes: { [weak self] bundleID, completion in
                 guard let self else { return completion(nil) }
+                if DemoShot.current != nil { return completion(DemoShot.modes) }
                 playbackModes.read(bundleID: bundleID, completion: completion)
             },
             toggleShuffle: { [weak self] bundleID, completion in
@@ -101,7 +102,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.terminationSignal = terminationSignal
 
         updateStatusItem()
-        adapter.start(options: prefs.adapterOptions)
+        if let shot = DemoShot.current {
+            showDemo(shot)
+        } else {
+            adapter.start(options: prefs.adapterOptions)
+        }
+    }
+
+    /// For the README screenshots: made-up tracks in place of the adapter's, and the notch
+    /// opened in the shot's state once it's on screen.
+    private func showDemo(_ shot: DemoShot) {
+        model.receive(shot.update)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            self?.notch?.showDemo(shot)
+            if shot == .settings { self?.settings.show() }
+        }
     }
 
     /// Opening the app again (Finder, Spotlight) shows Settings, which matters

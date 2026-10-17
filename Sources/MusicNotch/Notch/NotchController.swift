@@ -86,7 +86,8 @@ final class NotchController {
         self.prefs = prefs
         self.actions = actions
         spaces.onSwitch = { [weak self] displayUUID, direction in
-            guard let self else { return }
+            // A screenshot (`DemoShot`) holds still whatever the desktop does.
+            guard let self, DemoShot.current == nil else { return }
             // Show or hide for full screen first, so a panel that's about to hide doesn't
             // play its appear animation.
             updateVisibility()
@@ -105,8 +106,12 @@ final class NotchController {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.updateVisibility() }
         }
-        swipes.onSwipeBegan = { [weak self] in self?.swipeBegan() }
-        swipes.onSwipeEnded = { [weak self] direction in self?.swipeEnded(direction: direction) }
+        swipes.onSwipeBegan = { [weak self] in
+            if DemoShot.current == nil { self?.swipeBegan() }
+        }
+        swipes.onSwipeEnded = { [weak self] direction in
+            if DemoShot.current == nil { self?.swipeEnded(direction: direction) }
+        }
         // Pinned panels sit above the lock screen too, so step aside while locked.
         for (name, locked) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
             DistributedNotificationCenter.default().addObserver(
@@ -177,6 +182,11 @@ final class NotchController {
 
     func showTrackPeek() {
         panels.forEach { $0.showTrackPeek() }
+    }
+
+    /// Opens the notch in a README screenshot's state (see `DemoShot`).
+    func showDemo(_ shot: DemoShot) {
+        panels.forEach { $0.showDemo(shot) }
     }
 
     /// The keyboard shortcut: opens or closes the notch on the screen with the pointer, or
@@ -492,8 +502,8 @@ private final class NotchPanelController {
     }
 
     /// "Show new tracks": briefly opens a banner with the new track, then closes again.
-    func showTrackPeek() {
-        guard isShown, prefs.showTrackPeek, !isOpen, !isHiddenForSwipe else { return }
+    func showTrackPeek(stayOpen: Bool = false) {
+        guard isShown, prefs.showTrackPeek || stayOpen, !isOpen, !isHiddenForSwipe else { return }
         let size = state.geometry.trackPeekSize
         state.expandedSize = size
         state.isTrackPeek = true
@@ -501,10 +511,22 @@ private final class NotchPanelController {
         withAnimation(prefs.effectiveOpenAnimation.opening) { state.isExpanded = true }
         updateMouseHandling()
         trackPeekTask?.cancel()
+        guard !stayOpen else { return }
         trackPeekTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2.5))
             guard !Task.isCancelled, let self, self.state.isTrackPeek else { return }
             self.collapse()
+        }
+    }
+
+    /// Opens the notch in a README screenshot's state, without waiting for the pointer.
+    func showDemo(_ shot: DemoShot) {
+        switch shot {
+        case .closed, .settings: break
+        case .minimal: peek()
+        case .compact: expand(style: .compact)
+        case .full, .sources: expand(style: .full)
+        case .newTrack: showTrackPeek(stayOpen: true)
         }
     }
 
@@ -528,6 +550,8 @@ private final class NotchPanelController {
     }
 
     private func hoverChanged(_ inside: Bool) {
+        // A screenshot (`DemoShot`) holds still wherever the pointer goes.
+        guard DemoShot.current == nil else { return }
         hoverTask?.cancel()
         // The pointer reached a notch opened from the keyboard; from here, leaving closes it.
         if inside { keyboardCloseTask?.cancel() }
@@ -571,7 +595,7 @@ private final class NotchPanelController {
 
     /// "Open on: Click": a click anywhere on the closed notch opens it.
     private func tapped() {
-        guard prefs.openTrigger == .click else { return }
+        guard prefs.openTrigger == .click, DemoShot.current == nil else { return }
         if state.isTrackPeek {
             // A click on the new-track banner opens the usual panel.
             trackPeekTask?.cancel()
@@ -596,11 +620,12 @@ private final class NotchPanelController {
         updateMouseHandling()
     }
 
-    private func expand() {
+    /// Opens the Compact or Full panel: `style`, or else the one chosen in Settings.
+    private func expand(style: NotchStyle? = nil) {
         let showsProgress = prefs.effectiveProgressBar && model.snapshot?.duration != nil
         let showsModes = prefs.showShuffleRepeat
             && model.snapshot.map { AppPlaybackModes.supports(bundleID: $0.bundleID) } == true
-        let style = prefs.notchStyle
+        let style = style ?? prefs.notchStyle
         state.expandedStyle = style
         state.expandedSize = style == .compact
             ? state.geometry.compactSize(showsProgress: showsProgress, showsModes: showsModes,
