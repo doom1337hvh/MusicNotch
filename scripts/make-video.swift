@@ -1,16 +1,17 @@
-// Records the README demo video from the built app:
+// Records the README's clips from the built app:
 //
-//   scripts/build.sh && swift scripts/make-video.swift
+//   scripts/build.sh && swift scripts/make-video.swift            every scene
+//   scripts/build.sh && swift scripts/make-video.swift full tour  just these
 //
-// MusicNotch plays a scripted tour with made-up tracks (`-demo tour`, see DemoShot.tourSteps).
-// ScreenCaptureKit records only MusicNotch's own windows around the notch, and each frame is
-// placed on the same backdrop as the screenshots (scripts/make-screenshots.swift), with the
-// camera housing and a drawn pointer that follows the tour. Writes docs/demo.gif (for the
-// README, where GitHub won't play a video from the repository) and docs/demo.mp4 (for posts;
-// it's large, so it isn't committed).
+// For each scene, MusicNotch acts out a script with made-up tracks (`-demo <scene>`, see
+// Sources/MusicNotch/DemoScene.swift). ScreenCaptureKit records only MusicNotch's own windows,
+// and each frame is placed on a backdrop like the top of a MacBook screen, with the camera
+// housing and a drawn pointer that follows the script. Writes docs/demo.gif (the tour, at the
+// top of the README) and docs/clips/<scene>.gif, plus docs/demo.mp4 for sharing (large, so not
+// committed). GitHub won't play a video from the repository, hence GIFs.
 //
 // Needs the Screen Recording permission for the terminal it runs in, and a MacBook with a
-// notch. A running MusicNotch is quit first.
+// notch. A running MusicNotch is quit first; reopen it afterwards.
 import AppKit
 import AVFoundation
 import CoreImage
@@ -22,9 +23,7 @@ _ = NSApplication.shared
 
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
 let app = root.appendingPathComponent("build/MusicNotch.app/Contents/MacOS/MusicNotch")
-let mp4URL = root.appendingPathComponent("docs/demo.mp4")
-let gifURL = root.appendingPathComponent("docs/demo.gif")
-let clockFile = FileManager.default.temporaryDirectory.appendingPathComponent("musicnotch-tour-clock")
+let clockFile = FileManager.default.temporaryDirectory.appendingPathComponent("musicnotch-demo-clock")
 
 guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }),
       let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea
@@ -34,55 +33,114 @@ let notchWidth = screen.frame.width - left.width - right.width
 let scale = screen.backingScaleFactor
 let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as! CGDirectDisplayID
 
-/// The recorded area around the notch, in points.
-let canvas = CGSize(width: 820, height: 300)
-let pixelWidth = Int(canvas.width * scale), pixelHeight = Int(canvas.height * scale)
 let fps = 60.0
 let gifFPS = 20.0
-/// Seconds recorded before the tour starts, and the tour's length (DemoShot.tourSteps ends
-/// with a new-track peek that closes by itself at about 12.1 s).
+/// Seconds recorded before a scene starts.
 let preRoll = 0.8
-let tourLength = 13.0
+/// Width of the area recorded around the notch, in points.
+let notchCanvasWidth: CGFloat = 820
 
-/// The tour's settings, as launch arguments, which are never saved.
+/// Settings for the scenes, as launch arguments, which are never saved: the defaults, but
+/// with the bars always moving, and nothing (a full-screen app, the menu bar icon) in the way.
 let settings = [
-    "-openAnimation", "<integer>0</integer>", "-equalizerAnimation", "<integer>0</integer>",
-    "-notchStyle", "<integer>2</integer>", "-notchOpenTrigger", "<integer>0</integer>",
-    "-showBesideNotch", "<true/>", "-showTrackPeek", "<true/>", "-showShuffleRepeat", "<true/>",
-    "-showSearch", "<true/>", "-showArtwork", "<true/>", "-showProgressBar", "<true/>",
-    "-lowResourceMode", "<false/>", "-hideDuringSwipes", "<false/>", "-hideInFullScreen", "<integer>0</integer>",
-    "-showMenuBarIcon", "<false/>",
+    "openAnimation": "<integer>0</integer>", "spaceSwitchAnimation": "<integer>1</integer>",
+    "equalizerAnimation": "<integer>0</integer>", "notchStyle": "<integer>2</integer>",
+    "notchOpenTrigger": "<integer>0</integer>", "showBesideNotch": "<true/>", "showTrackPeek": "<true/>",
+    "showShuffleRepeat": "<true/>", "showSearch": "<true/>", "showArtwork": "<true/>",
+    "showProgressBar": "<true/>", "lowResourceMode": "<false/>", "hideDuringSwipes": "<false/>",
+    "hideInFullScreen": "<integer>0</integer>", "showMenuBarIcon": "<false/>", "settingsTab": "<integer>0</integer>",
+    "updateBatching": "<integer>150</integer>", "openFromCameraOnly": "<true/>", "clickArtworkOpensApp": "<true/>",
+    "showOnExternalDisplays": "<false/>",
+]
+/// The Settings clip shows every setting at its default.
+let settingsDefaults = [
+    "equalizerAnimation": "<integer>1</integer>", "hideInFullScreen": "<integer>1</integer>",
+    "showMenuBarIcon": "<true/>",
 ]
 
-// MARK: The pointer
+// MARK: The scenes
 
-/// Where the pointer is, in seconds from the tour's start and points from the top centre of
-/// the screen. It follows DemoShot.tourSteps: the Full panel's play button sits 161 pt down,
-/// its search button 157 pt left of it, and the first search result 101 pt down.
-let pointerPath: [(t: Double, x: CGFloat, y: CGFloat)] = [
-    (-1, 250, 236), (0.4, 250, 236), (1.2, 4, 15),  // to the camera: the notch opens
-    (2.1, 4, 15), (2.8, 0, 161),                     // to play/pause
-    (4.9, 0, 161), (5.7, -157, 161),                 // to search
-    (6.4, -157, 161), (7.0, 120, 128),               // aside while typing
-    (8.2, 120, 128), (8.9, -40, 101),                // to the first result
-    (9.4, -40, 101), (10.4, 250, 236),               // away, as the notch closes
+/// A clip. Its timings follow the scene's steps in DemoScene.swift; keep the two in step.
+struct Scene {
+    let name: String
+    /// Seconds recorded after the scene starts.
+    let length: Double
+    /// Height of the notch scenes' canvas, in points.
+    var height: CGFloat = 270
+    /// The pointer: seconds from the scene's start, and points from the top centre of the
+    /// screen (or the Settings window's top left). Empty: no pointer.
+    var path: [(t: Double, x: CGFloat, y: CGFloat)] = []
+    var clicks: [Double] = []
+    /// When the mouse button is held down, dragging.
+    var drags: [ClosedRange<Double>] = []
+    /// Recorded around the Settings window rather than the notch.
+    var isSettings = false
+    /// The README's main clip, also written as an MP4.
+    var isTour = false
+
+    var output: URL {
+        root.appendingPathComponent(isTour ? "docs/demo.gif" : "docs/clips/\(name).gif")
+    }
+}
+
+// Points in the Full panel, from the top centre of the screen: the camera area (4, 15), the
+// progress bar at y 123 from x -124 to 124, the controls row at y 161 (search -157,
+// shuffle -108, play 0, repeat 108), the first search result (-40, 101), and the app icons
+// beside the camera (Spotify -170, Chrome -148, Music 170; y 16).
+let park = (x: CGFloat(250), y: CGFloat(224))
+let scenes: [Scene] = [
+    Scene(name: "tour", length: 13.0, height: 300,
+          path: [(-1, 250, 236), (0.4, 250, 236), (1.2, 4, 15), (2.1, 4, 15), (2.8, 0, 161), (4.9, 0, 161),
+                 (5.7, -157, 161), (6.4, -157, 161), (7.0, 120, 128), (8.2, 120, 128), (8.9, -40, 101),
+                 (9.4, -40, 101), (10.4, 250, 236)],
+          clicks: [3.0, 4.6, 6.2, 9.2], isTour: true),
+    Scene(name: "closed", length: 4.8, height: 110),
+    Scene(name: "minimal", length: 5.2, height: 130,
+          path: [(-1, 250, 92), (0.3, 250, 92), (1.1, 4, 15), (1.6, 4, 15), (2.2, 103, 16), (2.8, 103, 16),
+                 (3.8, 250, 92)],
+          clicks: [2.5]),
+    Scene(name: "compact", length: 6.4, height: 160,
+          path: [(-1, 250, 120), (0.3, 250, 120), (1.1, 4, 15), (1.6, 4, 15), (2.4, 45, 62), (4.6, 45, 62),
+                 (5.4, 250, 120)],
+          clicks: [2.8, 4.2]),
+    Scene(name: "full", length: 8.2,
+          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.7, 4, 15), (2.6, -30, 123),
+                 (2.8, -30, 123), (3.8, 55, 123), (3.9, 55, 123), (4.7, -108, 161), (5.2, -108, 161),
+                 (5.6, 108, 161), (6.2, 108, 161), (7.0, park.x, park.y)],
+          clicks: [5.0, 5.9], drags: [2.75...3.9]),
+    Scene(name: "sources", length: 8.4,
+          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.7, 4, 15), (2.6, 170, 16),
+                 (3.4, 170, 16), (4.2, -148, 16), (5.0, -148, 16), (5.8, -170, 16), (6.6, -170, 16),
+                 (7.4, park.x, park.y)],
+          clicks: [3.0, 4.6, 6.2]),
+    Scene(name: "search", length: 8.6,
+          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.4, 4, 15), (2.1, -157, 161),
+                 (2.7, -157, 161), (3.3, 120, 128), (4.3, 120, 128), (4.9, -40, 101), (5.5, -40, 101),
+                 (6.4, park.x, park.y)],
+          clicks: [2.4, 5.2]),
+    Scene(name: "new-track", length: 4.6, height: 140),
+    // Toolbar items from the window's top left: Animations 186, Shortcuts 253, Performance
+    // 326, About 394; y 50. (The Notch tab is taller than fits in a clip.)
+    Scene(name: "settings", length: 7.0,
+          path: [(-1, 230, 300), (0.4, 230, 300), (1.0, 186, 50), (1.8, 186, 50), (2.4, 253, 50), (3.2, 253, 50),
+                 (3.8, 326, 50), (4.6, 326, 50), (5.2, 394, 50)],
+          clicks: [1.4, 2.8, 4.2, 5.6], isSettings: true),
 ]
-/// When the pointer clicks.
-let clicks: [Double] = [3.0, 4.6, 6.2, 9.2]
 
-func pointer(at t: Double) -> (point: CGPoint, pressed: Bool) {
-    var position = CGPoint(x: pointerPath.last!.x, y: pointerPath.last!.y)
-    for (from, to) in zip(pointerPath, pointerPath.dropFirst()) where t >= from.t && t <= to.t {
+func pointer(_ scene: Scene, at t: Double) -> (point: CGPoint, pressed: Bool)? {
+    guard let last = scene.path.last else { return nil }
+    var position = CGPoint(x: last.x, y: last.y)
+    for (from, to) in zip(scene.path, scene.path.dropFirst()) where t >= from.t && t <= to.t {
         let linear = to.t > from.t ? (t - from.t) / (to.t - from.t) : 1
         let eased = linear * linear * (3 - 2 * linear)
         position = CGPoint(x: from.x + (to.x - from.x) * eased, y: from.y + (to.y - from.y) * eased)
         break
     }
-    let pressed = clicks.contains { t >= $0 - 0.06 && t <= $0 + 0.12 }
-    return (CGPoint(x: canvas.width / 2 + position.x, y: position.y), pressed)
+    let pressed = scene.clicks.contains { t >= $0 - 0.06 && t <= $0 + 0.12 } || scene.drags.contains { $0.contains(t) }
+    return (position, pressed)
 }
 
-// MARK: The backdrop (matches make-screenshots.swift)
+// MARK: Drawing
 
 func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> CGColor {
     CGColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
@@ -94,26 +152,25 @@ func gradient(_ colors: [CGColor]) -> CGGradient {
 }
 
 /// A context in points with the origin at the top left, like a screen.
-func makeContext(width: Int, height: Int, scale: CGFloat) -> CGContext {
-    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+func makeContext(_ size: CGSize) -> CGContext {
+    let context = CGContext(data: nil, width: Int(size.width * scale), height: Int(size.height * scale),
+                            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                             bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
-    context.translateBy(x: 0, y: CGFloat(height))
+    context.translateBy(x: 0, y: size.height * scale)
     context.scaleBy(x: scale, y: -scale)
     context.interpolationQuality = .high
     return context
 }
 
-/// `calm` is a gentle two-colour version for the GIF: its 256 colours would band the full
-/// wallpaper into blotches.
-func makeBackdrop(calm: Bool) -> CGImage {
-    let context = makeContext(width: pixelWidth, height: pixelHeight, scale: scale)
-    let size = canvas
-    let height: CGFloat = 460
+/// The wallpaper, with the camera housing and a few menu bar icons for the notch scenes.
+/// `calm` is a gentle two-colour version for GIFs, whose 256 colours would band the full one.
+func makeBackdrop(_ size: CGSize, calm: Bool, notch: Bool) -> CGImage {
+    let context = makeContext(size)
     if calm {
         context.drawLinearGradient(gradient([color(0x3B1F7A), color(0x7A1F5C)]), start: .zero,
                                    end: CGPoint(x: size.width, y: size.height), options: [])
     } else {
+        let height: CGFloat = 460
         context.drawLinearGradient(gradient([color(0x1E1B4B), color(0x5B21B6), color(0xBE185D), color(0xF97316)]),
                                    start: .zero, end: CGPoint(x: size.width, y: height * 1.6),
                                    options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
@@ -124,12 +181,11 @@ func makeBackdrop(calm: Bool) -> CGImage {
                                        endCenter: center, endRadius: radius * size.width, options: [])
         }
     }
-    // The camera housing, black like the real one, so the notch is there even when closed.
+    guard notch else { return context.makeImage()! }
     let housing = CGRect(x: (size.width - notchWidth) / 2, y: -10, width: notchWidth, height: notchHeight + 10)
     context.addPath(CGPath(roundedRect: housing, cornerWidth: 9, cornerHeight: 9, transform: nil))
     context.setFillColor(color(0x000000))
     context.fillPath()
-
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
     var x = size.width - 22
@@ -144,6 +200,31 @@ func makeBackdrop(calm: Bool) -> CGImage {
     }
     NSGraphicsContext.restoreGraphicsState()
     return context.makeImage()!
+}
+
+let arrow = NSCursor.arrow
+
+/// The backdrop, MusicNotch's windows and the pointer, at `time` seconds into the scene.
+func compose(_ context: CGContext, size: CGSize, backdrop: CGImage, capture: CGImage?, scene: Scene,
+             anchor: CGPoint, time: Double) -> CGImage? {
+    for image in [backdrop, capture].compactMap({ $0 }) {
+        context.saveGState()
+        context.translateBy(x: 0, y: size.height)
+        context.scaleBy(x: 1, y: -1)
+        context.draw(image, in: CGRect(origin: .zero, size: size))
+        context.restoreGState()
+    }
+    if let (position, pressed) = pointer(scene, at: time) {
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        let factor: CGFloat = pressed ? 0.85 : 1
+        let imageSize = CGSize(width: arrow.image.size.width * factor, height: arrow.image.size.height * factor)
+        let origin = CGPoint(x: anchor.x + position.x - arrow.hotSpot.x * factor,
+                             y: anchor.y + position.y - arrow.hotSpot.y * factor)
+        arrow.image.draw(in: CGRect(origin: origin, size: imageSize))
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    return context.makeImage()
 }
 
 // MARK: Capture
@@ -183,166 +264,160 @@ func run(_ path: String, _ arguments: [String]) {
     process.waitUntilExit()
 }
 
-guard FileManager.default.isExecutableFile(atPath: app.path) else { fatalError("Build the app first: scripts/build.sh") }
-run("/usr/bin/pkill", ["-x", "MusicNotch"])
-Thread.sleep(forTimeInterval: 1)
-try? FileManager.default.removeItem(at: clockFile)
-
-let process = Process()
-process.executableURL = app
-process.arguments = ["-demo", "tour", "-demoClock", clockFile.path] + settings
-try process.run()
-print("Recording the tour…")
-
-// Wait for MusicNotch's windows, then capture only them, around the notch.
-var foundContent: SCShareableContent?
-var foundApp: SCRunningApplication?
-for _ in 0..<40 {
-    Thread.sleep(forTimeInterval: 0.1)
-    foundContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-    foundApp = foundContent?.applications.first { $0.processID == process.processIdentifier }
-    if foundApp != nil, foundContent?.windows.contains(where: { $0.owningApplication?.processID == process.processIdentifier }) == true {
-        break
+/// Launches MusicNotch on `scene`, records it, and writes its GIF (and MP4 for the tour).
+func record(_ scene: Scene) async throws {
+    run("/usr/bin/pkill", ["-x", "MusicNotch"])
+    try await Task.sleep(for: .seconds(1))
+    try? FileManager.default.removeItem(at: clockFile)
+    let process = Process()
+    process.executableURL = app
+    let overrides = settings.merging(scene.isSettings ? settingsDefaults : [:]) { $1 }
+    process.arguments = ["-demo", scene.name, "-demoClock", clockFile.path]
+        + overrides.sorted { $0.key < $1.key }.flatMap { ["-\($0.key)", $0.value] }
+    try process.run()
+    defer {
+        process.terminate()
+        process.waitUntilExit()
     }
-}
-guard let content = foundContent, let musicNotch = foundApp,
-      let display = content.displays.first(where: { $0.displayID == displayID })
-else {
-    process.terminate()
-    fatalError("MusicNotch's windows didn't appear.")
-}
-let filter = SCContentFilter(display: display, including: [musicNotch], exceptingWindows: [])
-let configuration = SCStreamConfiguration()
-configuration.sourceRect = CGRect(x: (screen.frame.width - canvas.width) / 2, y: 0, width: canvas.width, height: canvas.height)
-configuration.width = pixelWidth
-configuration.height = pixelHeight
-configuration.pixelFormat = kCVPixelFormatType_32BGRA
-configuration.colorSpaceName = CGColorSpace.sRGB
-configuration.backgroundColor = .clear
-configuration.showsCursor = false
-configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
-configuration.queueDepth = 8
 
-let capture = Capture()
-let stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-try stream.addStreamOutput(capture, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture"))
-try await stream.startCapture()
-
-// The tour writes its start time (CACurrentMediaTime) once it begins.
-var foundStart: Double?
-for _ in 0..<100 where foundStart == nil {
-    foundStart = (try? String(contentsOf: clockFile, encoding: .utf8)).flatMap(Double.init)
-    if foundStart == nil { Thread.sleep(forTimeInterval: 0.05) }
-}
-guard let tourStart = foundStart else {
-    process.terminate()
-    fatalError("The tour didn't start.")
-}
-
-// MARK: Write the video and the GIF
-
-try? FileManager.default.removeItem(at: mp4URL)
-let videoWriter = try AVAssetWriter(outputURL: mp4URL, fileType: .mp4)
-let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
-    AVVideoCodecKey: AVVideoCodecType.h264,
-    AVVideoWidthKey: pixelWidth,
-    AVVideoHeightKey: pixelHeight,
-    AVVideoCompressionPropertiesKey: [
-        AVVideoAverageBitRateKey: 10_000_000,
-        AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
-        AVVideoExpectedSourceFrameRateKey: Int(fps),
-    ],
-])
-input.expectsMediaDataInRealTime = true
-let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-    kCVPixelBufferWidthKey as String: pixelWidth,
-    kCVPixelBufferHeightKey as String: pixelHeight,
-])
-videoWriter.add(input)
-videoWriter.startWriting()
-videoWriter.startSession(atSourceTime: .zero)
-
-let frameCount = Int((preRoll + tourLength) * fps)
-let gifStep = Int(fps / gifFPS)
-try? FileManager.default.removeItem(at: gifURL)
-let gif = CGImageDestinationCreateWithURL(gifURL as CFURL, UTType.gif.identifier as CFString, frameCount / gifStep + 1, nil)!
-CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-let gifFrame = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / gifFPS,
-                                                kCGImagePropertyGIFUnclampedDelayTime: 1 / gifFPS]] as CFDictionary
-
-let arrow = NSCursor.arrow
-let videoFrame = (context: makeContext(width: pixelWidth, height: pixelHeight, scale: scale), backdrop: makeBackdrop(calm: false))
-let gifFrameImage = (context: makeContext(width: pixelWidth, height: pixelHeight, scale: scale), backdrop: makeBackdrop(calm: true))
-let firstFrame = tourStart - preRoll
-
-/// Draws the backdrop, MusicNotch's windows and the pointer at `time` (seconds from the tour's start).
-func compose(_ target: (context: CGContext, backdrop: CGImage), capture frame: CGImage?, time: Double) -> CGImage? {
-    let context = target.context
-    let bounds = CGRect(origin: .zero, size: canvas)
-    for image in [target.backdrop, frame].compactMap({ $0 }) {
-        context.saveGState()
-        context.translateBy(x: 0, y: bounds.maxY)
-        context.scaleBy(x: 1, y: -1)
-        context.draw(image, in: bounds)
-        context.restoreGState()
+    // Wait for MusicNotch's windows: the Settings window, or the notch.
+    var found: (SCShareableContent, SCRunningApplication, SCWindow?)?
+    for _ in 0..<60 where found == nil {
+        try await Task.sleep(for: .milliseconds(100))
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard let musicNotch = content.applications.first(where: { $0.processID == process.processIdentifier })
+        else { continue }
+        let windows = content.windows.filter { $0.owningApplication?.processID == process.processIdentifier }
+        let settingsWindow = windows.first { $0.windowLayer == 0 && $0.frame.width > 300 }
+        if scene.isSettings ? settingsWindow != nil : !windows.isEmpty {
+            found = (content, musicNotch, settingsWindow)
+        }
     }
-    let (point, pressed) = pointer(at: time)
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-    let size = arrow.image.size.applying(CGAffineTransform(scaleX: pressed ? 0.85 : 1, y: pressed ? 0.85 : 1))
-    let hotSpot = CGPoint(x: arrow.hotSpot.x * size.width / arrow.image.size.width,
-                          y: arrow.hotSpot.y * size.height / arrow.image.size.height)
-    arrow.image.draw(in: CGRect(x: point.x - hotSpot.x, y: point.y - hotSpot.y, width: size.width, height: size.height))
-    NSGraphicsContext.restoreGraphicsState()
-    return context.makeImage()
-}
+    guard let (content, musicNotch, settingsWindow) = found,
+          let display = content.displays.first(where: { $0.displayID == displayID })
+    else { throw NSError(domain: "make-video", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(scene.name): no windows"]) }
 
-for index in 0..<frameCount {
-    let time = Double(index) / fps
-    // Keep pace with the app, a frame behind so the capture has caught up.
-    while CACurrentMediaTime() < firstFrame + time + 1 / fps { usleep(1000) }
+    // The area recorded, in screen points from the top left, and where the pointer's
+    // coordinates start within it.
+    let region: CGRect
+    let anchor: CGPoint
+    if scene.isSettings, let frame = settingsWindow?.frame {
+        region = CGRect(x: frame.minX - 40, y: frame.minY - 40, width: frame.width + 80, height: 540)
+        anchor = CGPoint(x: 40, y: 40)
+    } else {
+        region = CGRect(x: (screen.frame.width - notchCanvasWidth) / 2, y: 0, width: notchCanvasWidth, height: scene.height)
+        anchor = CGPoint(x: notchCanvasWidth / 2, y: 0)
+    }
+    let size = region.size
+    let pixelWidth = Int(size.width * scale), pixelHeight = Int(size.height * scale)
 
-    let captured = capture.latest
-    guard let composed = compose(videoFrame, capture: captured, time: time - preRoll) else { continue }
-    if let debug = ProcessInfo.processInfo.environment["MUSICNOTCH_VIDEO_DEBUG"], index % 60 == 0 {
-        let tourTime = Int((time - preRoll).rounded())
-        if let raw = capture.latest {
-            try? NSBitmapImageRep(cgImage: raw).representation(using: .png, properties: [:])?
-                .write(to: URL(fileURLWithPath: "\(debug)/raw-\(tourTime).png"))
-        } else {
-            print("no captured frame at \(tourTime) s")
+    let configuration = SCStreamConfiguration()
+    configuration.sourceRect = region
+    configuration.width = pixelWidth
+    configuration.height = pixelHeight
+    configuration.pixelFormat = kCVPixelFormatType_32BGRA
+    configuration.colorSpaceName = CGColorSpace.sRGB
+    configuration.backgroundColor = .clear
+    configuration.showsCursor = false
+    configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
+    configuration.queueDepth = 8
+    let capture = Capture()
+    let stream = SCStream(filter: SCContentFilter(display: display, including: [musicNotch], exceptingWindows: []),
+                          configuration: configuration, delegate: nil)
+    try stream.addStreamOutput(capture, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture"))
+    try await stream.startCapture()
+
+    // The scene writes its start time (CACurrentMediaTime) once it begins.
+    var start: Double?
+    for _ in 0..<200 where start == nil {
+        start = (try? String(contentsOf: clockFile, encoding: .utf8)).flatMap(Double.init)
+        if start == nil { try await Task.sleep(for: .milliseconds(50)) }
+    }
+    guard let start else { throw NSError(domain: "make-video", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(scene.name): didn't start"]) }
+
+    // The GIF, and for the tour an MP4 on the full wallpaper.
+    let frameCount = Int((preRoll + scene.length) * fps)
+    let gifStep = Int(fps / gifFPS)
+    try FileManager.default.createDirectory(at: scene.output.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try? FileManager.default.removeItem(at: scene.output)
+    let gif = CGImageDestinationCreateWithURL(scene.output as CFURL, UTType.gif.identifier as CFString, frameCount / gifStep + 1, nil)!
+    CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+    let gifFrame = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / gifFPS,
+                                                    kCGImagePropertyGIFUnclampedDelayTime: 1 / gifFPS]] as CFDictionary
+    let gifContext = makeContext(size)
+    let gifBackdrop = makeBackdrop(size, calm: true, notch: !scene.isSettings)
+
+    var video: (writer: AVAssetWriter, input: AVAssetWriterInput, adaptor: AVAssetWriterInputPixelBufferAdaptor,
+                context: CGContext, backdrop: CGImage)?
+    if scene.isTour {
+        let url = root.appendingPathComponent("docs/demo.mp4")
+        try? FileManager.default.removeItem(at: url)
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: pixelWidth, AVVideoHeightKey: pixelHeight,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 10_000_000,
+                                              AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+                                              AVVideoExpectedSourceFrameRateKey: Int(fps)],
+        ])
+        input.expectsMediaDataInRealTime = true
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: pixelWidth, kCVPixelBufferHeightKey as String: pixelHeight,
+        ])
+        writer.add(input)
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+        video = (writer, input, adaptor, makeContext(size), makeBackdrop(size, calm: false, notch: true))
+    }
+
+    let firstFrame = start - preRoll
+    for index in 0..<frameCount {
+        let time = Double(index) / fps
+        // Keep pace with the app, a frame behind so the capture has caught up.
+        while CACurrentMediaTime() < firstFrame + time + 1 / fps { usleep(1000) }
+        let captured = capture.latest
+        let sceneTime = time - preRoll
+
+        if index % gifStep == 0,
+           let still = compose(gifContext, size: size, backdrop: gifBackdrop, capture: captured, scene: scene,
+                               anchor: anchor, time: sceneTime) {
+            CGImageDestinationAddImage(gif, still, gifFrame)
+        }
+        guard let video, let composed = compose(video.context, size: size, backdrop: video.backdrop, capture: captured,
+                                                scene: scene, anchor: anchor, time: sceneTime)
+        else { continue }
+        while !video.input.isReadyForMoreMediaData { usleep(500) }
+        var buffer: CVPixelBuffer?
+        if let pool = video.adaptor.pixelBufferPool,
+           CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer {
+            CVPixelBufferLockBaseAddress(buffer, [])
+            CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: pixelWidth, height: pixelHeight,
+                      bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                      bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)?
+                .draw(composed, in: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            video.adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: CMTimeScale(fps)))
         }
     }
 
-    while !input.isReadyForMoreMediaData { usleep(500) }
-    var buffer: CVPixelBuffer?
-    if let pool = adaptor.pixelBufferPool, CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess,
-       let buffer {
-        CVPixelBufferLockBaseAddress(buffer, [])
-        let target = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: pixelWidth, height: pixelHeight,
-                               bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-                               space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                               bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        target?.draw(composed, in: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
-        CVPixelBufferUnlockBaseAddress(buffer, [])
-        adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(index), timescale: CMTimeScale(fps)))
+    CGImageDestinationFinalize(gif)
+    if let video {
+        video.input.markAsFinished()
+        await video.writer.finishWriting()
     }
-
-    if index % gifStep == 0, let still = compose(gifFrameImage, capture: captured, time: time - preRoll) {
-        CGImageDestinationAddImage(gif, still, gifFrame)
-    }
+    try await stream.stopCapture()
+    try? FileManager.default.removeItem(at: clockFile)
+    let bytes = (try? FileManager.default.attributesOfItem(atPath: scene.output.path)[.size] as? Int) ?? 0
+    print("  \(scene.name): \(scene.output.path.replacingOccurrences(of: root.path + "/", with: "")) (\(bytes / 1024) KB)")
 }
 
-input.markAsFinished()
-await videoWriter.finishWriting()
-CGImageDestinationFinalize(gif)
-try? await stream.stopCapture()
-process.terminate()
-process.waitUntilExit()
-try? FileManager.default.removeItem(at: clockFile)
-
-for url in [mp4URL, gifURL] {
-    let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-    print("Wrote docs/\(url.lastPathComponent) (\(bytes / 1024) KB)")
+guard FileManager.default.isExecutableFile(atPath: app.path) else { fatalError("Build the app first: scripts/build.sh") }
+let requested = Set(CommandLine.arguments.dropFirst())
+for scene in scenes where requested.isEmpty || requested.contains(scene.name) {
+    do {
+        try await record(scene)
+    } catch {
+        print("  \(scene.name) failed: \(error.localizedDescription)")
+    }
 }

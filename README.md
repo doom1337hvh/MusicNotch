@@ -16,7 +16,7 @@
 <p align="center">
   <a href="https://github.com/doom1337hvh/MusicNotch/releases/latest"><b>Download</b></a> ·
   <a href="#install">Install</a> ·
-  <a href="#screenshots">Screenshots</a> ·
+  <a href="#in-action">In action</a> ·
   <a href="#settings">Settings</a>
 </p>
 
@@ -37,40 +37,40 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 
 Everything above can be switched off or changed in Settings.
 
-## Screenshots
+## In action
 
 <p align="center">
-  <img src="docs/screenshots/full.png" width="820" alt="The open notch: album art, title and artist, a progress bar, and search, shuffle, previous, pause, next, repeat and volume buttons"><br>
-  <sub><b>Full:</b> the artwork, a progress bar you can drag, and every control.</sub>
+  <img src="docs/clips/closed.gif" width="820" alt="The closed notch: album art to the left of the camera and moving equalizer bars to the right, which slide into a pause icon when the music pauses"><br>
+  <sub><b>Closed:</b> the album art and equalizer sit on either side of the camera. When the music pauses, the bars become a pause icon.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/closed.png" width="820" alt="The closed notch, with album art to the left of the camera and equalizer bars to the right"><br>
-  <sub><b>Closed:</b> the album art and equalizer bars sit on either side of the camera.</sub>
+  <img src="docs/clips/full.gif" width="820" alt="The Full panel: dragging the progress bar to skip ahead, then turning shuffle off and repeat on"><br>
+  <sub><b>Full:</b> every control. Drag the progress bar to skip through the song.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/minimal.png" width="820" alt="The Minimal style: the notch widens to show previous and next buttons"><br>
+  <img src="docs/clips/compact.gif" width="820" alt="The Compact style: a small panel with the controls in one row, pausing and playing"><br>
+  <sub><b>Compact:</b> a smaller panel with the controls in one row.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/clips/minimal.gif" width="820" alt="The Minimal style: the notch widens with skip buttons on hover, and skipping changes the artwork"><br>
   <sub><b>Minimal:</b> hover and the notch widens with skip buttons.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/compact.png" width="820" alt="The Compact style: a small panel with the artwork, title, controls and a thin progress line"><br>
-  <sub><b>Compact:</b> a small panel with the controls in one row.</sub>
-</p>
-
-<p align="center">
-  <img src="docs/screenshots/sources.png" width="820" alt="The open notch with Spotify, Chrome and Music icons beside the camera"><br>
+  <img src="docs/clips/sources.gif" width="820" alt="Several apps at once: clicking the Music, Chrome and Spotify icons beside the camera switches what the notch shows"><br>
   <sub><b>Several apps:</b> each app with media gets an icon beside the camera; click one to switch.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/search.png" width="820" alt="The search field in the notch, with three songs from the Music library"><br>
-  <sub><b>Search:</b> find a song in your Music library and play it without leaving the notch.</sub>
+  <img src="docs/clips/search.gif" width="820" alt="Search: typing a song name, picking a result from the Music library, and the new track peeking out"><br>
+  <sub><b>Search:</b> find a song in your Music library and play it without leaving the notch, or send a search to Spotify, YouTube or SoundCloud.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/new-track.png" width="820" alt="A brief banner showing the new track's artwork, title and artist"><br>
+  <img src="docs/clips/new-track.gif" width="820" alt="A new track: the notch briefly opens to show the new song's artwork, title and artist"><br>
   <sub><b>New track:</b> when the song changes, the notch briefly shows it.</sub>
 </p>
 
@@ -124,7 +124,7 @@ Keyboard shortcuts use macOS's standard hotkey system and need no permission.
 Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by opening MusicNotch again while it's running (useful if you've hidden the menu bar icon).
 
 <p align="center">
-  <img src="docs/screenshots/settings.png" width="440" alt="The Settings window on its Notch tab">
+  <img src="docs/clips/settings.gif" width="440" alt="The Settings window, clicking through its General, Animations, Shortcuts, Performance and About tabs">
 </p>
 
 **General:** launch at login and the menu bar icon. Under *Where it appears*:
@@ -215,7 +215,7 @@ The app is built to `build/MusicNotch.app`. `scripts/build.sh --install` also co
 
 Optionally, run `scripts/create-signing-cert.sh` once first. It makes a local code-signing certificate, so the permissions you grant survive rebuilds; otherwise each build is signed ad hoc and macOS treats it as a new app. To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
-The screenshots and the video above come from the real app, showing made-up tracks. After a build, `swift scripts/make-screenshots.swift` captures the screenshots again into `docs/screenshots`, and `swift scripts/make-video.swift` records the tour into `docs/demo.gif` (plus `docs/demo.mp4` for sharing). Both need the Screen Recording permission and a MacBook with a notch.
+The clips above are recorded from the real app, acting out scripted scenes with made-up tracks. After a build, `swift scripts/make-video.swift` records them all again into `docs/demo.gif` and `docs/clips` (plus `docs/demo.mp4` for sharing); name scenes to record just those. It needs the Screen Recording permission and a MacBook with a notch.
 
 ### How it works
 
@@ -228,13 +228,13 @@ The app itself is SwiftUI in an AppKit shell:
 ```
 Sources/MusicNotch/
   AppDelegate.swift, main.swift   app lifecycle, menu bar icon
-  DemoShot.swift                  made-up tracks for the README screenshots
+  DemoScene.swift                 made-up tracks and scripted scenes for the README's clips
   Media/                          adapter process, sessions parser, now-playing model,
                                   AppleScript (volume, shuffle, repeat)
   Notch/                          panels, geometry, views, animations, desktop switching
   Settings/                       preferences, keyboard shortcuts, the Settings window
 Adapter/                          MusicNotch's additions to mediaremote-adapter
-scripts/                          build, release, signing certificate, icon, screenshots
+scripts/                          build, release, signing certificate, icon, README clips
 ```
 
 ## License

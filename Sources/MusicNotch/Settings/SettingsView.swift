@@ -105,6 +105,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         return item
     }
 
+    /// Switches to a tab, for a demo clip (`DemoScene`).
+    func selectTab(_ index: Int) {
+        (window?.contentViewController as? NSTabViewController)?.selectedTabViewItemIndex = index
+    }
+
     func windowWillClose(_ notification: Notification) {
         recorder.stop()
         window = nil
@@ -134,7 +139,10 @@ private final class SettingsTabs: NSTabViewController {
 
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
-        if !isRestoring { UserDefaults.standard.set(selectedTabViewItemIndex, forKey: Self.lastTabKey) }
+        // A demo clip (`DemoScene`) switches tabs itself; that isn't the user's choice.
+        if !isRestoring && DemoScene.current == nil {
+            UserDefaults.standard.set(selectedTabViewItemIndex, forKey: Self.lastTabKey)
+        }
     }
 }
 
@@ -413,7 +421,9 @@ private struct AboutSettings: View {
     }
 
     private var adapterStatus: String {
-        switch adapter.status {
+        // A demo clip (`DemoScene`) never starts the adapter.
+        if DemoScene.current != nil { return "Working" }
+        return switch adapter.status {
         case .failed(let message): message
         case .stopped: "Starting…"
         case .running: adapter.hasSeenMedia ? "Working" : "Running, no media seen yet"

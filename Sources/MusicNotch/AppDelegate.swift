@@ -28,40 +28,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             NSApp.terminate(nil)
             return
         }
+        // In a demo, nothing reaches the real players or apps, even if the notch is clicked.
+        let demo = DemoScene.current != nil
         let actions = NotchActions(
-            playPause: { [weak self] in self?.togglePlayPause() },
-            next: { [weak self] in self?.perform(.nextTrack) },
-            previous: { [weak self] in self?.perform(.previousTrack) },
-            openSourceApp: { [weak self] in self?.openSourceApp() },
+            playPause: { [weak self] in if !demo { self?.togglePlayPause() } },
+            next: { [weak self] in if !demo { self?.perform(.nextTrack) } },
+            previous: { [weak self] in if !demo { self?.perform(.previousTrack) } },
+            openSourceApp: { [weak self] in if !demo { self?.openSourceApp() } },
             selectSource: { [weak self] sessionID in self?.model.pin(sessionID) },
-            seek: { [weak self] position in self?.seek(to: position) },
+            seek: { [weak self] position in if !demo { self?.seek(to: position) } },
             readVolume: { [weak self] bundleID, completion in
-                guard let self else { return completion(nil) }
+                guard let self, !demo else { return completion(demo ? 0.7 : nil) }
                 appVolume.read(bundleID: bundleID, completion: completion)
             },
             setVolume: { [weak self] bundleID, level in
+                guard !demo else { return }
                 self?.model.noteVolumeChange(bundleID: bundleID)
                 self?.appVolume.set(level, bundleID: bundleID)
             },
             readModes: { [weak self] bundleID, completion in
-                guard let self else { return completion(nil) }
-                if DemoShot.current != nil { return completion(DemoShot.modes) }
+                guard let self, !demo else { return completion(demo ? DemoScene.modes : nil) }
                 playbackModes.read(bundleID: bundleID, completion: completion)
             },
             toggleShuffle: { [weak self] bundleID, completion in
-                guard let self else { return completion(nil) }
+                guard let self, !demo else { return completion(nil) }
                 playbackModes.toggleShuffle(bundleID: bundleID, completion: completion)
             },
             cycleRepeat: { [weak self] bundleID, completion in
-                guard let self else { return completion(nil) }
+                guard let self, !demo else { return completion(nil) }
                 playbackModes.cycleRepeat(bundleID: bundleID, completion: completion)
             },
             searchLibrary: { [weak self] query, completion in
-                guard let self else { return completion(nil) }
+                guard let self, !demo else { return completion(demo ? DemoScene.searchResults : nil) }
                 mediaSearch.searchLibrary(query, completion: completion)
             },
-            playSearchResult: { [weak self] result in self?.mediaSearch.play(result) },
-            handOffSearch: { [weak self] query, target in self?.mediaSearch.handOff(query, to: target) },
+            playSearchResult: { [weak self] result in if !demo { self?.mediaSearch.play(result) } },
+            handOffSearch: { [weak self] query, target in if !demo { self?.mediaSearch.handOff(query, to: target) } },
             contextMenu: { [weak self] in self?.makeMenu() ?? NSMenu() }
         )
         let notch = NotchController(model: model, prefs: prefs, actions: actions)
@@ -109,8 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         self.terminationSignal = terminationSignal
 
         updateStatusItem()
-        if let shot = DemoShot.current {
-            showDemo(shot)
+        if let scene = DemoScene.current {
+            runDemo(scene)
         } else {
             adapter.start(options: prefs.adapterOptions)
             Task { [weak self] in
@@ -158,39 +160,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// For the README screenshots: made-up tracks in place of the adapter's, and the notch
     /// opened in the shot's state once it's on screen.
-    private func showDemo(_ shot: DemoShot) {
-        model.receive(shot.update)
+    // MARK: Demo scenes
+
+    private var demoTrack = 0
+    private var demoPlaying = true
+    /// The track's position when it last changed, and when that was.
+    private var demoElapsed: TimeInterval = 0
+    private var demoSince = Date()
+
+    /// For the README's clips (`DemoScene`): made-up tracks in place of the adapter's, then
+    /// the scene's steps. The start time (`CACurrentMediaTime`) goes to the file named by
+    /// `-demoClock`, so the recorder can line up its drawn pointer.
+    private func runDemo(_ scene: DemoScene) {
+        demoTrack = scene.firstTrack
+        demoElapsed = DemoScene.tracks[demoTrack].elapsed
+        showDemoTrack(scene)
+        if scene == .settings { settings.show() }
         Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(600))
-            self?.notch?.showDemo(shot)
-            if shot == .settings { self?.settings.show() }
-            if shot == .tour { await self?.runTour() }
+            // Gives the recorder time to start capturing first.
+            try? await Task.sleep(for: .seconds(2.6))
+            let start = CACurrentMediaTime()
+            if let clock = UserDefaults.standard.string(forKey: "demoClock") {
+                try? String(start).write(toFile: clock, atomically: true, encoding: .utf8)
+            }
+            for (time, step) in scene.steps {
+                let wait = start + time - CACurrentMediaTime()
+                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                self?.runDemoStep(step, in: scene)
+            }
         }
     }
 
-    /// Plays `DemoShot.tourSteps` for the video. Its start time (`CACurrentMediaTime`) goes
-    /// to the file named by `-demoClock`, so the recorder can line up its drawn pointer.
-    private func runTour() async {
-        // Gives the recorder time to start capturing first.
-        try? await Task.sleep(for: .seconds(2))
-        let start = CACurrentMediaTime()
-        if let clock = UserDefaults.standard.string(forKey: "demoClock") {
-            try? String(start).write(toFile: clock, atomically: true, encoding: .utf8)
+    private func runDemoStep(_ step: DemoStep, in scene: DemoScene) {
+        switch step {
+        case .playing(let playing):
+            demoElapsed = demoPosition
+            demoPlaying = playing
+            showDemoTrack(scene)
+        case .track(let track):
+            demoTrack = track
+            demoElapsed = 0
+            demoPlaying = true
+            showDemoTrack(scene)
+        case .seek(let fraction):
+            demoElapsed = fraction * DemoScene.tracks[demoTrack].duration
+            demoSince = Date()
+            model.seekOptimistically(to: demoElapsed)
+        case .select(let sessionID):
+            model.pin(sessionID)
+        case .settingsTab(let index):
+            // In front, so the window looks active.
+            settings.show()
+            settings.selectTab(index)
+        default:
+            break
         }
-        var track = 0
-        for (time, step) in DemoShot.tourSteps {
-            let wait = start + time - CACurrentMediaTime()
-            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-            switch step {
-            case .playing(let playing):
-                model.receive(DemoShot.tourUpdate(track: track, playing: playing))
-            case .track(let next):
-                track = next
-                model.receive(DemoShot.tourUpdate(track: next, playing: true))
-            default:
-                notch?.runDemoStep(step)
-            }
-        }
+        notch?.runDemoStep(step)
+    }
+
+    private var demoPosition: TimeInterval {
+        demoPlaying ? demoElapsed + Date().timeIntervalSince(demoSince) : demoElapsed
+    }
+
+    private func showDemoTrack(_ scene: DemoScene) {
+        demoSince = Date()
+        model.receive(scene.update(track: demoTrack, playing: demoPlaying, elapsed: demoElapsed))
     }
 
     /// Opening the app again (Finder, Spotlight) shows Settings, which matters

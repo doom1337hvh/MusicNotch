@@ -93,8 +93,8 @@ final class NotchController {
         self.prefs = prefs
         self.actions = actions
         spaces.onSwitch = { [weak self] displayUUID, direction in
-            // A screenshot (`DemoShot`) holds still whatever the desktop does.
-            guard let self, DemoShot.current == nil else { return }
+            // A demo clip (`DemoScene`) holds still whatever the desktop does.
+            guard let self, DemoScene.current == nil else { return }
             // Show or hide for full screen first, so a panel that's about to hide doesn't
             // play its appear animation.
             updateVisibility()
@@ -119,10 +119,10 @@ final class NotchController {
             }
         }
         swipes.onSwipeBegan = { [weak self] in
-            if DemoShot.current == nil { self?.swipeBegan() }
+            if DemoScene.current == nil { self?.swipeBegan() }
         }
         swipes.onSwipeEnded = { [weak self] direction in
-            if DemoShot.current == nil { self?.swipeEnded(direction: direction) }
+            if DemoScene.current == nil { self?.swipeEnded(direction: direction) }
         }
         // Pinned panels sit above the lock screen too, so step aside while locked.
         for (name, locked) in [("com.apple.screenIsLocked", true), ("com.apple.screenIsUnlocked", false)] {
@@ -196,12 +196,7 @@ final class NotchController {
         panels.forEach { $0.showTrackPeek() }
     }
 
-    /// Opens the notch in a README screenshot's state (see `DemoShot`).
-    func showDemo(_ shot: DemoShot) {
-        panels.forEach { $0.showDemo(shot) }
-    }
-
-    /// Acts out a step of the recorded tour (see `DemoShot.tourSteps`).
+    /// Acts out a step of a README clip (see `DemoScene.steps`).
     func runDemoStep(_ step: DemoStep) {
         panels.forEach { $0.runDemoStep(step) }
     }
@@ -561,33 +556,23 @@ private final class NotchPanelController {
     }
 
     /// Opens the notch in a README screenshot's state, without waiting for the pointer.
-    func showDemo(_ shot: DemoShot) {
-        switch shot {
-        case .closed, .settings, .tour: break
-        case .minimal: peek()
-        case .compact: expand(style: .compact)
-        case .full, .sources: expand(style: .full)
-        case .newTrack: showTrackPeek(stayOpen: true)
-        case .search:
-            expand(style: .full)
-            startSearch()
-            state.search?.text = DemoShot.searchText
-            state.search?.results = DemoShot.searchResults
-            resizeForSearch()
-        }
-    }
-
     func runDemoStep(_ step: DemoStep) {
         switch step {
         case .open(let style): if style == .minimal { peek() } else { expand(style: style) }
+        case .collapse: collapse()
         case .startSearch: startSearch()
         case .search(let text, let results):
             state.search?.text = text
             state.search?.results = results
             resizeForSearch()
         case .closeSearch: endSearch(thenCollapse: true)
-        // The app delegate changes what's playing.
-        case .playing, .track: break
+        case .scrub(let fraction): state.scrubFraction = fraction
+        case .seek: state.scrubFraction = nil
+        case .modes(let modes):
+            state.modesBundleID = model.snapshot?.bundleID
+            state.modes = modes
+        // The app delegate changes what's playing, and Settings.
+        case .playing, .track, .select, .settingsTab: break
         }
     }
 
@@ -611,8 +596,8 @@ private final class NotchPanelController {
     }
 
     private func hoverChanged(_ inside: Bool) {
-        // A screenshot (`DemoShot`) holds still wherever the pointer goes.
-        guard DemoShot.current == nil else { return }
+        // A demo clip (`DemoScene`) holds still wherever the pointer goes.
+        guard DemoScene.current == nil else { return }
         hoverTask?.cancel()
         // The pointer reached a notch opened from the keyboard; from here, leaving closes it.
         if inside { keyboardCloseTask?.cancel() }
@@ -657,7 +642,7 @@ private final class NotchPanelController {
 
     /// "Open on: Click": a click anywhere on the closed notch opens it.
     private func tapped() {
-        guard prefs.openTrigger == .click, DemoShot.current == nil else { return }
+        guard prefs.openTrigger == .click, DemoScene.current == nil else { return }
         if state.isTrackPeek {
             // A click on the new-track banner opens the usual panel.
             trackPeekTask?.cancel()
@@ -874,8 +859,8 @@ private final class NotchPanelController {
 
     /// The user clicked into another app while searching.
     private func panelResignedKey() {
-        // A screenshot (`DemoShot`) holds still as focus returns to the terminal that ran it.
-        guard state.search != nil, DemoShot.current == nil else { return }
+        // A demo clip (`DemoScene`) holds still as focus returns to the terminal that ran it.
+        guard state.search != nil, DemoScene.current == nil else { return }
         endSearch(thenCollapse: !isPointerOverPanel)
     }
 
