@@ -39,12 +39,14 @@ echo "Signed by $AUTHORITY"
 step "Packaging $NAME"
 rm -rf "$DIST"
 mkdir -p "$DIST"
-# ditto keeps the framework's symlinks and the signature intact.
-ditto -c -k --keepParent "$APP" "$DIST/$NAME.zip"
+# ditto keeps the framework's symlinks and the signature intact. The local file attributes
+# macOS adds (provenance and the like) are left out; the signature doesn't cover them.
+CLEAN=(--norsrc --noextattr --noqtn --noacl)
+ditto -c -k "${CLEAN[@]}" --keepParent "$APP" "$DIST/$NAME.zip"
 
 STAGING="$(mktemp -d)"
 trap 'rm -rf "$STAGING"' EXIT
-ditto "$APP" "$STAGING/MusicNotch.app"
+ditto "${CLEAN[@]}" "$APP" "$STAGING/MusicNotch.app"
 ln -s /Applications "$STAGING/Applications"
 hdiutil create -quiet -volname "MusicNotch $VERSION" -srcfolder "$STAGING" -fs HFS+ \
   -format UDZO -ov "$DIST/$NAME.dmg"
