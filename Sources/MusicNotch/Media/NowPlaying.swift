@@ -1,5 +1,5 @@
+import AppKit
 import CoreGraphics
-import Foundation
 import Observation
 
 /// Album art, already downsampled for display. Compared by identity so views
@@ -96,6 +96,12 @@ struct NowPlayingSnapshot: Sendable, Equatable {
     var artwork: Artwork?
     /// Whether the app accepts a jump to a position, i.e. the progress bar can be dragged.
     var canSeek = false
+    /// An app playing sound that doesn't report to Now Playing (see `SoundApps`): the title
+    /// is its name and the artwork its icon, and it gets microphone and deafen buttons
+    /// instead of playback controls.
+    var isSoundOnly = false
+    /// For such an app: using the microphone, so most likely in a call.
+    var usesMicrophone = false
 
     /// The bundle ID of the app to bring forward, e.g. the browser for web audio.
     var sourceAppBundleID: String { parentBundleID ?? bundleID }
@@ -152,6 +158,15 @@ final class NowPlaying {
     @ObservationIgnored private var wasVisible = false
     /// When MusicNotch last changed each app's volume, by bundle ID.
     @ObservationIgnored private var volumeChangedAt: [String: Date] = [:]
+    /// The adapter's sessions, and the apps playing sound without Now Playing; `sessions` is both.
+    @ObservationIgnored private var mediaSessions: [MediaSession] = []
+    @ObservationIgnored private var soundSessions: [MediaSession] = []
+    @ObservationIgnored private var appIcons: [String: Artwork] = [:]
+
+    /// For the apps playing sound without Now Playing (see `SoundApps`, `Microphone`).
+    var isMicrophoneMuted = false
+    var canMuteMicrophone = false
+    var deafenedApps: Set<String> = []
 
     var displayedSession: MediaSession? {
         sessions.first { $0.id == displayedSessionID }
@@ -167,9 +182,23 @@ final class NowPlaying {
     /// False if this macOS can't send commands to apps other than its "now playing" one.
     var canTargetApps = true
 
+    /// While an app playing sound is shown (say, a call), the music behind it: macOS's
+    /// "now playing" app if it has media, otherwise the first app with media.
+    var mediaBehindSound: NowPlayingSnapshot? {
+        guard snapshot?.isSoundOnly == true else { return nil }
+        let media = sessions.filter { !$0.snapshot.isSoundOnly }
+        return (media.first { $0.snapshot.bundleID == electedBundleID } ?? media.first)?.snapshot
+    }
+
+    /// Spotify's media session, shown or not.
+    var spotifySnapshot: NowPlayingSnapshot? {
+        sessions.first { $0.snapshot.bundleID == "com.spotify.client" && !$0.snapshot.isSoundOnly }?.snapshot
+    }
+
     /// Whether the buttons can reach the displayed app.
     var canControlDisplayed: Bool {
-        snapshot != nil && (isDisplayedElected || canTargetApps)
+        guard let snapshot, !snapshot.isSoundOnly else { return false }
+        return isDisplayedElected || canTargetApps
     }
 
     /// Spotify re-publishes its now playing info with the position reset to 0 whenever its
@@ -192,8 +221,45 @@ final class NowPlaying {
             update.sessions[index].snapshot.elapsed = known.elapsed
             update.sessions[index].snapshot.timestamp = known.timestamp
         }
+        mediaSessions = update.sessions
+        if update.electedBundleID != electedBundleID { electedBundleID = update.electedBundleID }
+        refresh()
+    }
+
+    /// The apps playing sound without Now Playing, shown as sessions of their own.
+    func receive(soundApps: [SoundApp]) {
+        soundSessions = soundApps.map { app in
+            MediaSession(id: "sound:" + app.bundleID, snapshot: NowPlayingSnapshot(
+                title: app.name, artist: app.usesMicrophone ? "In a call" : "Playing sound", album: nil,
+                bundleID: app.bundleID, parentBundleID: nil, isPlaying: true, playbackRate: 1, duration: nil,
+                elapsed: nil, timestamp: nil, artwork: icon(for: app), isSoundOnly: true,
+                usesMicrophone: app.usesMicrophone
+            ))
+        }
+        refresh()
+    }
+
+    private func icon(for app: SoundApp) -> Artwork? {
+        if let icon = appIcons[app.bundleID] { return icon }
+        var rect = CGRect(x: 0, y: 0, width: 128, height: 128)
+        guard let image = NSWorkspace.shared.icon(forFile: app.url.path)
+            .cgImage(forProposedRect: &rect, context: nil, hints: nil)
+        else { return nil }
+        let icon = Artwork(id: app.bundleID.hashValue, image: image)
+        appIcons[app.bundleID] = icon
+        return icon
+    }
+
+    /// Both kinds of session, with an app that also has media left to its media session,
+    /// unless it's in a call (say, a browser with a call in one tab and a video in another).
+    private func refresh() {
+        let mediaApps = Set(mediaSessions.flatMap { [$0.snapshot.bundleID, $0.snapshot.parentBundleID].compactMap { $0 } })
+        let all = mediaSessions + soundSessions.filter {
+            $0.snapshot.usesMicrophone || !mediaApps.contains($0.snapshot.bundleID)
+        }
+        let now = Date()
         var startedPlaying = Set<String>()
-        for session in update.sessions {
+        for session in all {
             if session.snapshot.isPlaying {
                 if playingSince[session.id] == nil {
                     playingSince[session.id] = now
@@ -203,7 +269,7 @@ final class NowPlaying {
                 playingSince[session.id] = nil
             }
         }
-        let ids = Set(update.sessions.map(\.id))
+        let ids = Set(all.map(\.id))
         playingSince = playingSince.filter { ids.contains($0.key) }
 
         if let pinned = pinnedSessionID {
@@ -212,8 +278,7 @@ final class NowPlaying {
                 pinnedSessionID = nil
             }
         }
-        if update.sessions != sessions { sessions = update.sessions }
-        if update.electedBundleID != electedBundleID { electedBundleID = update.electedBundleID }
+        if all != sessions { sessions = all }
         select()
 
         if sessions.isEmpty {
@@ -253,18 +318,25 @@ final class NowPlaying {
         snapshot = updated
     }
 
-    /// The pick if there is one; otherwise whatever is playing, preferring macOS's choice
-    /// and then the most recently started; otherwise stay on the current session (so
-    /// pausing it doesn't jump to another app); otherwise macOS's choice.
+    /// The pick if there is one; otherwise an app in a call (using the microphone), even over
+    /// music; otherwise whatever media is playing, preferring macOS's choice and then the most
+    /// recently started; otherwise an app playing sound, like a game;
+    /// otherwise stay on the current session (so pausing it doesn't jump to another app);
+    /// otherwise macOS's choice.
     private func select() {
         let playing = sessions.filter(\.snapshot.isPlaying)
-        let chosen: MediaSession? =
-            sessions.first { $0.id == pinnedSessionID }
-            ?? playing.first { $0.snapshot.bundleID == electedBundleID }
-            ?? playing.max { (playingSince[$0.id] ?? .distantPast) < (playingSince[$1.id] ?? .distantPast) }
-            ?? sessions.first { $0.id == displayedSessionID }
-            ?? sessions.first { $0.snapshot.bundleID == electedBundleID }
-            ?? sessions.first
+        let playingMedia = playing.filter { !$0.snapshot.isSoundOnly }
+        let calls = playing.filter(\.snapshot.usesMicrophone)
+        let latest = { (candidates: [MediaSession]) -> MediaSession? in
+            candidates.max { (self.playingSince[$0.id] ?? .distantPast) < (self.playingSince[$1.id] ?? .distantPast) }
+        }
+        // In steps, so the compiler can follow the types.
+        let picked: MediaSession? = sessions.first { $0.id == pinnedSessionID } ?? latest(calls)
+        let playingNow: MediaSession? = playingMedia.first { $0.snapshot.bundleID == electedBundleID }
+            ?? latest(playingMedia) ?? latest(playing)
+        let stayed: MediaSession? = sessions.first { $0.id == displayedSessionID }
+            ?? sessions.first { $0.snapshot.bundleID == electedBundleID } ?? sessions.first
+        let chosen = picked ?? playingNow ?? stayed
         if chosen?.id != displayedSessionID { displayedSessionID = chosen?.id }
         if let chosen, chosen.snapshot != snapshot { snapshot = chosen.snapshot }
         if let chosen {

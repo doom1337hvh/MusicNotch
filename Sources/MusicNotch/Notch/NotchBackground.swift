@@ -34,58 +34,54 @@ struct NotchBackground: View {
     }
 }
 
-/// Black around the camera housing, fading out along its sides and rounded bottom: a solid
-/// copy of the housing, so it's the same black as the housing itself, over a blurred one that
-/// spreads a little outside it and runs above the top of the screen, so the top isn't
-/// blurred. Below the housing the panel's contents start soon after, so there the fade is cut
-/// short. While the notch is closed the blurred one shrinks to the housing's size, where
-/// it's out of sight, and it grows out of the housing as the notch opens.
+/// Black around the camera housing, fading out to the sides and below it: a solid black
+/// copy of the housing, so it's the same black as the housing itself, then gradients down
+/// each side and along the bottom, joined by elliptical ones at the bottom corners. All of
+/// them use one falloff, so the blend is even all the way round. Below the housing the
+/// panel's contents start soon after, so the fade there is shorter than at the sides.
+/// While the notch is closed the gradients shrink to nothing, out of sight under the
+/// housing, and they grow out of it as the notch opens.
 private struct HousingFade: View {
     let housing: CGSize
     let isGrown: Bool
 
-    /// The blur's spread; beside the housing the fade reaches glass about 6 × this out.
-    private static let softness: CGFloat = 5
-    /// How far below the housing the fade reaches glass. The contents start 8 pt below it.
-    private static let bottomFade: CGFloat = 6
-    /// The real housing's bottom corners.
-    private static let cornerRadius: CGFloat = 8
-    /// Eased, so the fade below has no visible start or end.
-    private static let bottomFadeStops: [Gradient.Stop] = stride(from: 0.0, through: 1.0, by: 0.25).map { t in
-        .init(color: .black.opacity(1 - t * t * (3 - 2 * t)), location: t)
+    /// How far out the fade reaches glass, beside and below the housing.
+    private static let sideFade: CGFloat = 56
+    private static let bottomFade: CGFloat = 24
+    /// Falls quickly at first and then trails off, so there's no visible edge.
+    private static let stops: [Gradient.Stop] = stride(from: 0.0, through: 1.0, by: 0.0625).map { t in
+        .init(color: .black.opacity((1 - t) * (1 - t)), location: t)
     }
 
     var body: some View {
-        let softness = isGrown ? Self.softness : 0
-        // Grown by 3 × the spread, the blurred copy is still fully black at the housing's edge.
-        let grow = 3 * softness
-        // Room for the blur around the blurred copy, so the mask doesn't cut it off.
-        let room = 3 * Self.softness
-        ZStack(alignment: .top) {
-            Self.shape(radius: Self.cornerRadius + grow)
-                .frame(width: housing.width + 2 * grow, height: housing.height + 2 * grow)
-                .blur(radius: softness)
-                .padding(room)
-                // In heights rather than fractions, so the cut stays at the housing's bottom
-                // while the copy grows.
-                .mask {
-                    VStack(spacing: 0) {
-                        Color.black.frame(height: room + grow + housing.height)
-                        LinearGradient(stops: Self.bottomFadeStops, startPoint: .top, endPoint: .bottom)
-                            .frame(height: Self.bottomFade)
-                        Color.clear
-                    }
-                }
-                .offset(y: -(room + grow))
-            Self.shape(radius: Self.cornerRadius)
-                .frame(width: housing.width, height: housing.height)
+        let side = isGrown ? Self.sideFade : 0
+        let bottom = isGrown ? Self.bottomFade : 0
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                LinearGradient(stops: Self.stops, startPoint: .trailing, endPoint: .leading)
+                    .frame(width: side)
+                Color.black.frame(width: housing.width)
+                LinearGradient(stops: Self.stops, startPoint: .leading, endPoint: .trailing)
+                    .frame(width: side)
+            }
+            .frame(height: housing.height)
+            HStack(spacing: 0) {
+                Self.corner(at: .topTrailing, width: side, height: bottom)
+                LinearGradient(stops: Self.stops, startPoint: .top, endPoint: .bottom)
+                    .frame(width: housing.width)
+                Self.corner(at: .topLeading, width: side, height: bottom)
+            }
+            .frame(height: bottom)
         }
         .frame(width: housing.width, height: housing.height, alignment: .top)
     }
 
-    private static func shape(radius: CGFloat) -> some View {
-        UnevenRoundedRectangle(bottomLeadingRadius: radius, bottomTrailingRadius: radius, style: .continuous)
-            .fill(.black)
+    /// A quarter of an ellipse, fading out from the housing's corner at `center`.
+    private static func corner(at center: UnitPoint, width: CGFloat, height: CGFloat) -> some View {
+        RadialGradient(stops: stops, center: center, startRadius: 0, endRadius: max(width, 1))
+            .frame(width: width, height: width)
+            .scaleEffect(x: 1, y: width > 0 ? height / width : 0, anchor: .top)
+            .frame(width: width, height: height, alignment: .top)
     }
 }
 

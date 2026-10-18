@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private lazy var appVolume = AppVolume(scripts: scripts)
     private lazy var playbackModes = AppPlaybackModes(scripts: scripts)
     private lazy var mediaSearch = MediaSearch(scripts: scripts)
+    private let soundApps = SoundApps()
+    private let microphone = Microphone()
+    /// Deafening a call muted the microphone, so undeafening unmutes it.
+    private var mutedForDeafen = false
     private let hotkeys = HotkeyCenter()
     private var notch: NotchController?
     private var statusItem: NSStatusItem?
@@ -54,9 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 guard let self, !demo else { return completion(nil) }
                 playbackModes.toggleShuffle(bundleID: bundleID, completion: completion)
             },
-            cycleRepeat: { [weak self] bundleID, completion in
+            setRepeat: { [weak self] bundleID, mode, completion in
                 guard let self, !demo else { return completion(nil) }
-                playbackModes.cycleRepeat(bundleID: bundleID, completion: completion)
+                playbackModes.setRepeat(mode, bundleID: bundleID, completion: completion)
             },
             searchLibrary: { [weak self] query, completion in
                 guard let self, !demo else { return completion(demo ? DemoScene.searchResults : nil) }
@@ -64,15 +68,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             playSearchResult: { [weak self] result in if !demo { self?.mediaSearch.play(result) } },
             handOffSearch: { [weak self] query, target in if !demo { self?.mediaSearch.handOff(query, to: target) } },
+            toggleMicrophone: { [weak self] in if !demo { self?.toggleMicrophone() } },
+            toggleDeafen: { [weak self] bundleID in if !demo { self?.toggleDeafen(bundleID) } },
             contextMenu: { [weak self] in self?.makeMenu() ?? NSMenu() }
         )
         let notch = NotchController(model: model, prefs: prefs, actions: actions)
         self.notch = notch
 
         model.onPresenceChange = { [weak notch] visible in notch?.setVisible(visible) }
-        model.onTrackChange = { [weak notch] in notch?.showTrackPeek() }
-        adapter.onUpdate = { [weak model, weak notch] update in
+        model.onTrackChange = { [weak notch] in notch?.trackChanged() }
+        playbackModes.spotifySnapshot = { [weak model] in model?.spotifySnapshot }
+        adapter.onUpdate = { [weak self, weak model, weak notch] update in
             model?.receive(update)
+            // Repeating a Spotify song is timed from Spotify's position.
+            if !demo { self?.playbackModes.follow(model?.spotifySnapshot) }
             // "Hide in full screen" can depend on which app is playing.
             notch?.updateVisibility()
         }
@@ -89,6 +98,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             hotkeys.register(prefs.hotkeys)
         }
+        soundApps.onChange = { [weak self] apps in
+            guard let self else { return }
+            model.receive(soundApps: apps)
+            // The call has ended: don't leave the microphone muted.
+            if !apps.contains(where: \.usesMicrophone) {
+                mutedForDeafen = false
+                microphone.restore()
+            }
+            self.notch?.updateVisibility()
+        }
+        soundApps.onDeafenChange = { [weak model] deafened in model?.deafenedApps = deafened }
+        microphone.onChange = { [weak self] in
+            guard let self else { return }
+            model.isMicrophoneMuted = microphone.isMuted
+            model.canMuteMicrophone = microphone.canMute
+        }
+        prefs.onSoundAppsChange = { [weak self] in self?.updateSoundApps() }
+        updateSoundApps()
         hotkeys.onAction = { [weak self] action in self?.handle(action) }
         hotkeys.register(prefs.hotkeys)
         // Permission may have been granted in System Settings meanwhile; try again on return.
@@ -212,6 +239,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // In front, so the window looks active.
             settings.show()
             settings.selectTab(index)
+        case .microphone(let muted):
+            model.isMicrophoneMuted = muted
+        case .deafen(let deafened):
+            model.deafenedApps = deafened ? [DemoScene.soundApp.bundleID] : []
         default:
             break
         }
@@ -225,6 +256,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showDemoTrack(_ scene: DemoScene) {
         demoSince = Date()
         model.receive(scene.update(track: demoTrack, playing: demoPlaying, elapsed: demoElapsed))
+        if !scene.soundApps.isEmpty {
+            model.canMuteMicrophone = true
+            model.receive(soundApps: scene.soundApps)
+        }
     }
 
     /// Opening the app again (Finder, Spotlight) shows Settings, which matters
@@ -236,6 +271,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         adapter.stop()
+        microphone.restore()
+    }
+
+    /// Deafening a call (an app using the microphone) also mutes the microphone, as call apps
+    /// do: nobody expects to be heard while they can't hear. Undeafening puts the microphone
+    /// back as it was. Anything else is just silenced.
+    private func toggleDeafen(_ bundleID: String) {
+        let wasDeafened = soundApps.deafened.contains(bundleID)
+        soundApps.toggleDeafen(bundleID)
+        let isDeafened = soundApps.deafened.contains(bundleID)
+        guard isDeafened != wasDeafened,
+              soundApps.apps.contains(where: { $0.bundleID == bundleID && $0.usesMicrophone })
+        else { return }
+        if isDeafened, !microphone.isMuted {
+            microphone.toggle()
+            mutedForDeafen = microphone.isMuted
+        } else if !isDeafened, mutedForDeafen {
+            mutedForDeafen = false
+            if microphone.isMuted { microphone.toggle() }
+        }
+    }
+
+    /// Unmuting while a call is deafened undeafens it too: talking to people you can't hear
+    /// isn't much use.
+    private func toggleMicrophone() {
+        let wasMuted = microphone.isMuted
+        microphone.toggle()
+        guard wasMuted, !microphone.isMuted else { return }
+        mutedForDeafen = false
+        for app in soundApps.apps where app.usesMicrophone && soundApps.deafened.contains(app.bundleID) {
+            soundApps.toggleDeafen(app.bundleID)
+        }
+    }
+
+    /// Follows "Show apps playing sound". A demo clip shows only its own made-up tracks.
+    private func updateSoundApps() {
+        if prefs.showSoundApps && DemoScene.current == nil {
+            microphone.start()
+            soundApps.start()
+        } else {
+            soundApps.stop()
+            microphone.stop()
+        }
     }
 
     private func handle(_ action: HotkeyAction) {
@@ -248,6 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func togglePlayPause() {
+        if model.snapshot?.isSoundOnly == true { return perform(.togglePlayPause) }
         guard model.canControlDisplayed else { return }
         model.togglePlayPauseOptimistically()
         perform(.togglePlayPause)
@@ -262,6 +341,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Media commands go to macOS's "now playing" app, which stays the same even after it
     /// pauses. If the notch shows a different app, the command is sent to that app instead.
     private func perform(_ command: AdapterProcess.Command) {
+        switch command {
+        case .nextTrack, .previousTrack: playbackModes.noteSkip()
+        default: break
+        }
+        // An app playing sound has no playback of its own; shortcuts reach the music behind it.
+        if model.snapshot?.isSoundOnly == true {
+            guard let media = model.mediaBehindSound else { return }
+            if media.bundleID == model.electedBundleID {
+                adapter.send(command)
+            } else if model.canTargetApps {
+                adapter.send(command, to: media)
+            }
+            return
+        }
         guard model.snapshot == nil || model.canControlDisplayed else { return }
         guard let snapshot = model.snapshot, !model.isDisplayedElected else {
             adapter.send(command)

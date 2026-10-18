@@ -28,8 +28,9 @@ MusicNotch shows whatever is playing on your Mac (Spotify, Apple Music, YouTube 
 - **Seek** by dragging the progress bar.
 - **Colours:** the equalizer, progress bar and volume slider take on the album's colour, or a solid colour you pick.
 - **Glass theme:** the open notch can be glass instead of black, with black fading out around the camera so it still grows out of the housing.
-- **Shuffle, repeat and volume** for Spotify and Apple Music.
+- **Shuffle, repeat this song, and volume** for Spotify and Apple Music.
 - **Search:** find a song in your Music library and play it right from the notch, or send a search to Spotify, YouTube or SoundCloud.
+- **Calls and games too:** apps that play sound or use the microphone without being music players, like a call or a game, show up with their icon and moving bars, and buttons to mute your microphone (for every app) and to deafen that app.
 - **Several apps at once:** if Spotify is playing and a YouTube video is paused, the notch shows the one that's playing. The open panel has an icon for each app, so you can switch, and the controls reach apps in the background too.
 - **New-track peek:** when the song changes, the notch briefly shows it.
 - **Keyboard shortcuts** for opening the notch, play/pause and skipping, in any app.
@@ -41,45 +42,47 @@ Everything above can be switched off or changed in Settings.
 
 ## In action
 
-<p align="center">
-  <img src="docs/clips/closed.gif" width="820" alt="The closed notch: album art to the left of the camera and moving equalizer bars to the right, which slide into a pause icon when the music pauses"><br>
-  <sub><b>Closed:</b> the album art and equalizer sit on either side of the camera. When the music pauses, the bars become a pause icon.</sub>
-</p>
+Click one to watch it.
 
-<p align="center">
-  <img src="docs/clips/full.gif" width="820" alt="The Full panel: dragging the progress bar to skip ahead, then turning shuffle off and repeat on"><br>
-  <sub><b>Full:</b> every control. Drag the progress bar to skip through the song.</sub>
-</p>
+<details>
+<summary><b>Compact</b> (the default): a small panel with the controls in one row, on glass.</summary>
+<p align="center"><img src="docs/clips/compact.gif" width="820" alt="The Compact style on glass: a small panel with the controls in one row, pausing and playing"></p>
+</details>
 
-<p align="center">
-  <img src="docs/clips/compact.gif" width="820" alt="The Compact style: a small panel with the controls in one row, pausing and playing"><br>
-  <sub><b>Compact:</b> a smaller panel with the controls in one row.</sub>
-</p>
+<details>
+<summary><b>Full</b>: every control. Drag the progress bar to skip through the song.</summary>
+<p align="center"><img src="docs/clips/full.gif" width="820" alt="The Full panel: dragging the progress bar to skip ahead, then turning shuffle off and repeating the song"></p>
+</details>
 
-<p align="center">
-  <img src="docs/clips/minimal.gif" width="820" alt="The Minimal style: the notch widens with skip buttons on hover, and skipping changes the artwork"><br>
-  <sub><b>Minimal:</b> hover and the notch widens with skip buttons.</sub>
-</p>
+<details>
+<summary><b>Minimal</b>: hover and the notch widens with skip buttons.</summary>
+<p align="center"><img src="docs/clips/minimal.gif" width="820" alt="The Minimal style: the notch widens with skip buttons on hover, and skipping changes the artwork"></p>
+</details>
 
-<p align="center">
-  <img src="docs/clips/sources.gif" width="820" alt="Several apps at once: clicking the Music, Chrome and Spotify icons beside the camera switches what the notch shows"><br>
-  <sub><b>Several apps:</b> each app with media gets an icon beside the camera; click one to switch.</sub>
-</p>
+<details>
+<summary><b>Closed</b>: the album art and equalizer sit on either side of the camera. When the music pauses, the bars become a pause icon.</summary>
+<p align="center"><img src="docs/clips/closed.gif" width="820" alt="The closed notch: album art to the left of the camera and moving equalizer bars to the right, which slide into a pause icon when the music pauses"></p>
+</details>
 
-<p align="center">
-  <img src="docs/clips/glass.gif" width="820" alt="The glass theme: the open panel is see-through below the camera, fading from black at the top, while switching between three apps changes the colours"><br>
-  <sub><b>Glass:</b> the desktop shows through the open notch, with black fading out around the camera. The bars and progress bar take each album's colour.</sub>
-</p>
+<details>
+<summary><b>Several apps</b>: each app with media gets an icon beside the camera; click one to switch. With lots of them, the strip of icons reaches out past the panel.</summary>
+<p align="center"><img src="docs/clips/sources.gif" width="820" alt="Several apps at once: the icons of Spotify, YouTube, Music, SoundCloud, Safari, Podcasts, TV and Teams line up beside the camera, and clicking YouTube, Teams and Spotify switches what the notch shows"></p>
+</details>
 
-<p align="center">
-  <img src="docs/clips/search.gif" width="820" alt="Search: typing a song name, picking a result from the Music library, and the new track peeking out"><br>
-  <sub><b>Search:</b> find a song in your Music library and play it without leaving the notch, or send a search to Spotify, YouTube or SoundCloud.</sub>
-</p>
+<details>
+<summary><b>Calls and games</b>: an app in a call (using the microphone) or playing sound shows up too, with buttons to mute your microphone and to deafen it.</summary>
+<p align="center"><img src="docs/clips/sound.gif" width="820" alt="A Teams call with the music paused: the notch shows Teams' icon and "In a call", and opening it gives buttons to mute the microphone and deafen the call"></p>
+</details>
 
-<p align="center">
-  <img src="docs/clips/new-track.gif" width="820" alt="A new track: the notch briefly opens to show the new song's artwork, title and artist"><br>
-  <sub><b>New track:</b> when the song changes, the notch briefly shows it.</sub>
-</p>
+<details>
+<summary><b>Search</b>: find a song in your Music library and play it without leaving the notch, or send a search to Spotify, YouTube or SoundCloud.</summary>
+<p align="center"><img src="docs/clips/search.gif" width="820" alt="Search: typing a song name, picking a result from the Music library, and the new track peeking out"></p>
+</details>
+
+<details>
+<summary><b>New track</b>: when the song changes, the notch briefly shows it.</summary>
+<p align="center"><img src="docs/clips/new-track.gif" width="820" alt="A new track: the notch briefly opens to show the new song's artwork, title and artist"></p>
+</details>
 
 ## Requirements
 
@@ -119,6 +122,7 @@ MusicNotch works without any permissions. Each one below is only requested when 
 | Permission | Asked when | What it's for |
 |---|---|---|
 | **Automation** (Spotify, Music) | You first use the volume, shuffle or repeat button, or search Music | Reading and changing that app's own volume, shuffle and repeat, and searching your Music library, through AppleScript. Nothing else is sent to the app. |
+| **System Audio Recording** | You first deafen an app | Silencing that app's sound. MusicNotch holds the app's sound back from the speakers with a Core Audio tap set to mute; it never reads from it, so nothing is recorded. |
 | **Input Monitoring** | You turn on **Hide while swiping** | Noticing the moment a three-finger swipe between desktops begins. MusicNotch's listener only receives the Dock's swipe gesture: no keystrokes, no clicks, nothing else. |
 | **Login Items** | You turn on **Launch at login** | Starting MusicNotch when you log in. |
 
@@ -130,28 +134,30 @@ Keyboard shortcuts use macOS's standard hotkey system and need no permission.
 
 Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by opening MusicNotch again while it's running (useful if you've hidden the menu bar icon).
 
-<p align="center">
-  <img src="docs/clips/settings.gif" width="440" alt="The Settings window, clicking through its General, Animations, Shortcuts, Performance and About tabs">
-</p>
+<details>
+<summary><b>See the Settings window</b></summary>
+<p align="center"><img src="docs/clips/settings.gif" width="440" alt="The Settings window, clicking through its Notch, Appearance, Animations, Performance and About tabs"></p>
+</details>
 
 **General:** launch at login and the menu bar icon. Under *Where it appears*:
 - **Show on displays without a notch:** adds a small pill to the top of external displays (off by default).
-- **Hide in full screen:** *When the playing app is* (default) hides it for a full-screen video, but not while music plays behind another full-screen app. The other choices are *In any full-screen app* and *Never*.
+- **Hide in full screen:** *Never* (default), *When the playing app is*, which hides it while a full-screen app plays (a full-screen video, but also a full-screen browser playing anything), or *In any full-screen app*.
 
 **Notch.** *When closed*:
 - **Show artwork and bars beside the notch** (on by default): turn it off and nothing shows until you hover over the notch, so it looks like the plain camera housing.
 - **Show new tracks** (on by default): briefly shows the new song when the track changes.
+- **Show other apps playing sound** (on by default, macOS 14.2 or later): apps that play sound or use the microphone for more than a couple of seconds and aren't music players, like a call or a game, show with their icon and name. An app using the microphone is shown as in a call, and comes first, even over music; otherwise music comes first while it plays. Their panel has **Mute microphone**, which mutes your Mac's microphone for every app (the call app's own mute button doesn't change, and MusicNotch unmutes it when the call ends), **Deafen**, which silences just that app (and, for a call, mutes your microphone too, as call apps do; undeafening puts it back), and **Show app**. While one is shown, the play/pause and skip shortcuts still reach your music.
 
 *Opening*:
-- **Style:** Minimal, Compact or Full (default).
+- **Style:** Minimal, Compact (default) or Full.
 - **Open on:** Hover (default) or Click.
 - **Only open from the camera** (on by default): the closed notch's sides let clicks through to the menu bar, and only the camera area opens it.
 
 **Appearance.** *Look*:
-- **Theme:** Black (default) or Glass, which lets the desktop show through the open notch, with black fading out around the camera.
+- **Theme:** Glass (default), which lets the desktop show through the open notch, with black fading out around the camera, or Black.
 - **Colour** of the equalizer, progress bar and volume slider: *From the artwork* (default; the album's most vivid colour, or white for black-and-white artwork), *White*, or *Solid colour*, which you pick.
 
-*In the open notch*: album artwork, the progress bar (drag it to seek), shuffle and repeat buttons (for Spotify and Music), the search button, and whether clicking the artwork opens the playing app.
+*In the open notch*: album artwork, the progress bar (drag it to seek), shuffle and repeat-this-song buttons (for Spotify and Music; Spotify doesn't let other apps use its own repeat-one, so for Spotify MusicNotch repeats the song itself, moving it back to the start just before it ends), the search button, and whether clicking the artwork opens the playing app.
 
 **Search** (the 🔍 in the Compact and Full panels) depends on the app. Music shows matching songs from your library right in the notch: click one, or press Return for the top result. Spotify, YouTube and SoundCloud don't let other apps see their results, so pressing Return opens their own search with what you typed. A browser tab searches YouTube. Esc closes the search.
 

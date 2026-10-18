@@ -215,7 +215,7 @@ private struct GeneralSettings: View {
                     ForEach(FullScreenHiding.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Hide in full screen")
-                    Text("\"When the playing app is\" hides it for a full-screen video, but not while music plays behind another full-screen app.")
+                    Text("\"When the playing app is\" hides it while a full-screen app plays, which includes a full-screen browser playing anything.")
                 }
             }
         }
@@ -236,6 +236,13 @@ private struct NotchSettings: View {
                     Text("Show new tracks")
                     Text("When the song changes, the notch briefly opens to show it.")
                 }
+                Toggle(isOn: SoundApps.isSupported ? $prefs.showSoundApps : .constant(false)) {
+                    Text("Show other apps playing sound")
+                    Text(SoundApps.isSupported
+                         ? "Calls and games, with buttons to mute your microphone and to deafen the app. An app using the microphone comes first, even over music."
+                         : "Needs macOS 14.2 or later.")
+                }
+                .disabled(!SoundApps.isSupported)
             }
 
             Section("Opening") {
@@ -305,7 +312,7 @@ private struct AppearanceSettings: View {
                 .disabled(prefs.isLowResource)
                 Toggle(isOn: $prefs.showShuffleRepeat) {
                     Text("Shuffle and repeat buttons")
-                    Text("For Spotify and Music. The first click asks to let MusicNotch control the app.")
+                    Text("For Spotify and Music; repeat repeats the song. The first click asks to let MusicNotch control the app.")
                 }
                 Toggle(isOn: $prefs.showSearch) {
                     Text("Search button")

@@ -24,6 +24,8 @@
     <string>2</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>MusicNotch silences an app when you deafen it from the notch. It doesn't record or keep any audio.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>MusicNotch changes Spotify's and Music's own volume, shuffle and repeat, and searches your Music library, when you use those controls in the notch.</string>
     <key>LSUIElement</key>

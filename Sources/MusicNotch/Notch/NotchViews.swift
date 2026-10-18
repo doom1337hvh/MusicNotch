@@ -18,6 +18,13 @@ struct NotchRootView: View {
         let compact = state.expandedStyle == .compact || state.isTrackPeek
         let sources = SourcesInfo(sessions: model.sessions, displayedID: model.displayedSessionID,
                                   canControl: model.canControlDisplayed)
+        let sound = SoundControl(
+            isMicrophoneMuted: model.isMicrophoneMuted, canMuteMicrophone: model.canMuteMicrophone,
+            isDeafened: model.snapshot.map { model.deafenedApps.contains($0.bundleID) } ?? false,
+            toggleMicrophone: actions.toggleMicrophone,
+            toggleDeafen: { [model] in if let bundleID = model.snapshot?.bundleID { actions.toggleDeafen(bundleID) } },
+            showApp: actions.openSourceApp
+        )
         // On a closed notch with "Open on: Click", the artwork opens the notch like the rest
         // of it; otherwise it opens the playing app.
         let artworkTap: @MainActor () -> Void = {
@@ -29,7 +36,9 @@ struct NotchRootView: View {
         }
         let shape = NotchShape(
             topRadius: expanded ? (compact ? 12 : 14) : (geometry.hasNotch && !hidesClosed ? 6 : 0),
-            bottomRadius: expanded ? (compact ? 18 : 22) : (geometry.hasNotch ? (hidesClosed ? 8 : 10) : geometry.height / 2)
+            bottomRadius: expanded ? (compact ? 18 : 22) : (geometry.hasNotch ? (hidesClosed ? 8 : 10) : geometry.height / 2),
+            bandInset: expanded ? (state.expandedSize.width - state.expandedBodyWidth) / 2 : 0,
+            bandHeight: geometry.height
         )
 
         ZStack(alignment: .top) {
@@ -39,7 +48,7 @@ struct NotchRootView: View {
                     let seek = seekControl(for: snapshot, canControl: sources.canControl)
                     let modes = modesControl(for: snapshot)
                     let search = SearchControl(
-                        target: prefs.showSearch ? SearchTarget.forApp(of: snapshot) : nil,
+                        target: prefs.showSearch && !snapshot.isSoundOnly ? SearchTarget.forApp(of: snapshot) : nil,
                         search: state.search,
                         send: { [state] event in state.onSearch?(event) }
                     )
@@ -48,12 +57,14 @@ struct NotchRootView: View {
                             TrackPeekView(snapshot: snapshot, prefs: prefs, geometry: geometry)
                         } else if compact {
                             CompactView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
-                                        sources: sources, volume: volume, seek: seek, modes: modes,
-                                        search: search, panelWidth: state.expandedSize.width)
+                                        sources: sources, volume: volume, seek: seek, modes: modes, sound: sound,
+                                        search: search, panelWidth: state.expandedSize.width,
+                                        bodyWidth: state.expandedBodyWidth)
                         } else {
                             ExpandedView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
-                                         sources: sources, volume: volume, seek: seek, modes: modes,
-                                         search: search, panelWidth: state.expandedSize.width)
+                                         sources: sources, volume: volume, seek: seek, modes: modes, sound: sound,
+                                         search: search, panelWidth: state.expandedSize.width,
+                                         bodyWidth: state.expandedBodyWidth)
                         }
                     }
                     .frame(width: state.expandedSize.width, height: state.expandedSize.height, alignment: .top)
@@ -63,7 +74,7 @@ struct NotchRootView: View {
                         ))
                 } else if !hidesClosed {
                     CollapsedView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
-                                  sources: sources, isPeeking: peeking, onArtworkTap: artworkTap)
+                                  sources: sources, sound: sound, isPeeking: peeking, onArtworkTap: artworkTap)
                         .frame(width: barSize.width, height: geometry.height)
                         .offset(x: state.contentOffset)
                         .transition(.opacity)
@@ -186,11 +197,39 @@ struct NotchRootView: View {
             toggleShuffle: {
                 change(PlaybackModes(shuffle: !shown.shuffle, repeatMode: shown.repeatMode), actions.toggleShuffle)
             },
-            cycleRepeat: {
-                let next = AppPlaybackModes.nextRepeat(after: shown.repeatMode, bundleID: bundleID)
-                change(PlaybackModes(shuffle: shown.shuffle, repeatMode: next), actions.cycleRepeat)
+            toggleRepeat: {
+                let next: RepeatMode = shown.repeatMode == .one ? .off : .one
+                change(PlaybackModes(shuffle: shown.shuffle, repeatMode: next)) { bundleID, completion in
+                    actions.setRepeat(bundleID, next, completion)
+                }
             }
         )
+    }
+}
+
+/// For an app playing sound without Now Playing (see `SoundApps`): mute the microphone for
+/// every app (see `Microphone`), deafen this app, or bring it forward.
+struct SoundControl {
+    var isMicrophoneMuted: Bool
+    var canMuteMicrophone: Bool
+    var isDeafened: Bool
+    var toggleMicrophone: @MainActor () -> Void
+    var toggleDeafen: @MainActor () -> Void
+    var showApp: @MainActor () -> Void
+
+    var microphoneButton: (symbol: String, isOn: Bool, enabled: Bool, help: String) {
+        guard canMuteMicrophone else {
+            return ("mic.fill", false, false, "This microphone can't be muted by other apps")
+        }
+        return isMicrophoneMuted
+            ? ("mic.slash.fill", true, true, "Your microphone is muted for every app. Click to unmute")
+            : ("mic.fill", false, true, "Mute your microphone for every app")
+    }
+
+    var deafenButton: (symbol: String, isOn: Bool, enabled: Bool, help: String) {
+        isDeafened
+            ? ("speaker.slash.fill", true, true, "This app is silenced. Click to hear it again")
+            : ("speaker.wave.2.fill", false, true, "Deafen: silence this app")
     }
 }
 
@@ -203,7 +242,8 @@ struct ModesControl {
     /// Reads the app's current modes, if MusicNotch is allowed to control it.
     var refresh: @MainActor () -> Void
     var toggleShuffle: @MainActor () -> Void
-    var cycleRepeat: @MainActor () -> Void
+    /// Repeats this song, or turns repeat off.
+    var toggleRepeat: @MainActor () -> Void
 
     var shuffleButton: (symbol: String, isOn: Bool, help: String) {
         let on = modes?.shuffle == true
@@ -212,8 +252,8 @@ struct ModesControl {
 
     var repeatButton: (symbol: String, isOn: Bool, help: String) {
         switch modes?.repeatMode ?? .off {
-        case .off: ("repeat", false, help("Repeat"))
-        case .all: ("repeat", true, help("Repeat is on"))
+        case .off: ("repeat", false, help("Repeat this song"))
+        case .all: ("repeat", true, help("Repeating the playlist. Click to repeat this song"))
         case .one: ("repeat.1", true, help("Repeating this song"))
         }
     }
@@ -256,6 +296,7 @@ private struct CollapsedView: View {
     let geometry: NotchGeometry
     let actions: NotchActions
     let sources: SourcesInfo
+    let sound: SoundControl
     let isPeeking: Bool
     let onArtworkTap: @MainActor () -> Void
 
@@ -263,9 +304,10 @@ private struct CollapsedView: View {
         let side = geometry.height - 12
         HStack(spacing: 0) {
             ArtworkView(artwork: prefs.effectiveArtwork ? snapshot.artwork : nil, size: side, cornerRadius: 5)
-                // With several apps playing media, a small badge says which one this is.
+                // With several apps playing media, a small badge says which one this is. An app
+                // playing sound already shows its own icon.
                 .overlay(alignment: .bottomTrailing) {
-                    if sources.hasSeveral {
+                    if sources.hasSeveral && !snapshot.isSoundOnly {
                         Image(nsImage: AppIcons.icon(for: snapshot.sourceAppBundleID))
                             .resizable()
                             .frame(width: 11, height: 11)
@@ -275,15 +317,29 @@ private struct CollapsedView: View {
                 .onTapGesture { onArtworkTap() }
                 .frame(width: geometry.wingWidth)
             if isPeeking {
-                ControlButton(symbol: "backward.fill", size: 12, width: geometry.peekButtonWidth,
-                              height: geometry.height, enabled: sources.canControl, action: actions.previous)
-                    .transition(.opacity.combined(with: .scale(scale: 0.5)))
+                Group {
+                    if snapshot.isSoundOnly {
+                        SoundButton(sound.microphoneButton, size: 12, width: geometry.peekButtonWidth,
+                                    height: geometry.height, action: sound.toggleMicrophone)
+                    } else {
+                        ControlButton(symbol: "backward.fill", size: 12, width: geometry.peekButtonWidth,
+                                      height: geometry.height, enabled: sources.canControl, action: actions.previous)
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.5)))
             }
             Spacer(minLength: 0)
             if isPeeking {
-                ControlButton(symbol: "forward.fill", size: 12, width: geometry.peekButtonWidth,
-                              height: geometry.height, enabled: sources.canControl, action: actions.next)
-                    .transition(.opacity.combined(with: .scale(scale: 0.5)))
+                Group {
+                    if snapshot.isSoundOnly {
+                        SoundButton(sound.deafenButton, size: 12, width: geometry.peekButtonWidth,
+                                    height: geometry.height, action: sound.toggleDeafen)
+                    } else {
+                        ControlButton(symbol: "forward.fill", size: 12, width: geometry.peekButtonWidth,
+                                      height: geometry.height, enabled: sources.canControl, action: actions.next)
+                    }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.5)))
             }
             EqualizerView(isPlaying: snapshot.isPlaying, animated: prefs.effectiveEqualizerAnimation,
                           color: prefs.accent(for: snapshot))
@@ -403,8 +459,11 @@ private struct ExpandedView: View {
     let volume: VolumeControl
     let seek: SeekControl
     let modes: ModesControl
+    let sound: SoundControl
     let search: SearchControl
     let panelWidth: CGFloat
+    /// Narrower than `panelWidth` when the strip of app icons reaches further out.
+    let bodyWidth: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
@@ -414,6 +473,7 @@ private struct ExpandedView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
                     .padding(.bottom, 14)
+                    .frame(width: bodyWidth)
                     .transition(.opacity)
             } else {
             VStack(spacing: 14) {
@@ -450,6 +510,9 @@ private struct ExpandedView: View {
                         VolumeRow(volume: volume)
                             .padding(.horizontal, 36)
                             .transition(.opacity)
+                    } else if snapshot.isSoundOnly {
+                        SoundButtons(sound: sound, size: 16, width: 40, height: 30, spacing: 30)
+                            .transition(.opacity)
                     } else {
                         HStack(spacing: modes.isShown ? 16 : 30) {
                             if modes.isShown {
@@ -462,7 +525,7 @@ private struct ExpandedView: View {
                             ControlButton(symbol: "forward.fill", size: 16, enabled: sources.canControl,
                                           action: actions.next)
                             if modes.isShown {
-                                ModeButton(modes.repeatButton, size: 13, width: 32, action: modes.cycleRepeat)
+                                ModeButton(modes.repeatButton, size: 13, width: 32, action: modes.toggleRepeat)
                             }
                         }
                         .transition(.opacity)
@@ -487,6 +550,7 @@ private struct ExpandedView: View {
             .padding(.horizontal, 30)
             .padding(.top, 12)
             .padding(.bottom, 16)
+            .frame(width: bodyWidth)
             .transition(.opacity)
             }
         }
@@ -541,8 +605,11 @@ private struct CompactView: View {
     let volume: VolumeControl
     let seek: SeekControl
     let modes: ModesControl
+    let sound: SoundControl
     let search: SearchControl
     let panelWidth: CGFloat
+    /// Narrower than `panelWidth` when the strip of app icons reaches further out.
+    let bodyWidth: CGFloat
 
     var body: some View {
         VStack(spacing: 0) {
@@ -552,14 +619,17 @@ private struct CompactView: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 12)
                     .padding(.bottom, 14)
+                    .frame(width: bodyWidth)
                     .transition(.opacity)
             } else {
             VStack(spacing: 8) {
-                HStack(spacing: 10) {
+                // Tight, to keep the panel narrow; keep `NotchGeometry.compactSize` in sync.
+                HStack(spacing: 6) {
                     ArtworkView(artwork: prefs.effectiveArtwork ? snapshot.artwork : nil, size: 40, cornerRadius: 8)
                         .onTapGesture {
                             if prefs.clickArtworkOpensApp { actions.openSourceApp() }
                         }
+                        .padding(.trailing, 4)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(snapshot.title)
                             .font(.system(size: 12.5, weight: .semibold))
@@ -576,32 +646,35 @@ private struct CompactView: View {
                         VolumeRow(volume: volume)
                             .frame(width: 104)
                             .transition(.opacity)
+                    } else if snapshot.isSoundOnly {
+                        SoundButtons(sound: sound, size: 12, width: 28, height: 28, spacing: 0)
+                            .transition(.opacity)
                     } else {
                         // Keep `NotchGeometry.compactSize` in sync with the mode buttons' width.
                         HStack(spacing: 0) {
                             if modes.isShown {
-                                ModeButton(modes.shuffleButton, size: 10.5, width: 26, height: 28,
+                                ModeButton(modes.shuffleButton, size: 10.5, width: 22, height: 28,
                                            action: modes.toggleShuffle)
                             }
-                            ControlButton(symbol: "backward.fill", size: 12, width: 28, height: 28,
+                            ControlButton(symbol: "backward.fill", size: 12, width: 24, height: 28,
                                           enabled: sources.canControl, action: actions.previous)
                             ControlButton(symbol: snapshot.isPlaying ? "pause.fill" : "play.fill", size: 15,
-                                          width: 30, height: 28, enabled: sources.canControl, action: actions.playPause)
-                            ControlButton(symbol: "forward.fill", size: 12, width: 28, height: 28,
+                                          width: 28, height: 28, enabled: sources.canControl, action: actions.playPause)
+                            ControlButton(symbol: "forward.fill", size: 12, width: 24, height: 28,
                                           enabled: sources.canControl, action: actions.next)
                             if modes.isShown {
-                                ModeButton(modes.repeatButton, size: 10.5, width: 26, height: 28,
-                                           action: modes.cycleRepeat)
+                                ModeButton(modes.repeatButton, size: 10.5, width: 22, height: 28,
+                                           action: modes.toggleRepeat)
                             }
                         }
                         .transition(.opacity)
                     }
                     // Keep `NotchGeometry.compactSize` in sync with these buttons' widths.
                     if search.isAvailable {
-                        SearchButton(search: search, size: 11)
+                        SearchButton(search: search, size: 11, width: 24)
                     }
                     if volume.isSupported {
-                        VolumeButton(volume: volume, size: 11)
+                        VolumeButton(volume: volume, size: 11, width: 24)
                     }
                 }
                 .frame(height: 40)
@@ -614,9 +687,10 @@ private struct CompactView: View {
                         .frame(height: 3)
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 16)
             .padding(.top, 10)
             .padding(.bottom, 12)
+            .frame(width: bodyWidth)
             .transition(.opacity)
             }
         }
@@ -772,10 +846,11 @@ private struct ProgressTrack: View {
 private struct VolumeButton: View {
     let volume: VolumeControl
     let size: CGFloat
+    var width: CGFloat = 26
 
     var body: some View {
         ControlButton(symbol: volume.isShown ? "speaker.wave.2.circle.fill" : "speaker.wave.2.fill",
-                      size: size, width: 26, height: 28, action: volume.toggle)
+                      size: size, width: width, height: 28, action: volume.toggle)
             .help(volume.isShown ? "Back to playback controls" : "Volume")
     }
 }
@@ -860,6 +935,59 @@ private struct ModeButton: View {
         }
         .buttonStyle(PressableButtonStyle())
         .foregroundStyle(.white)
+        .help(help)
+    }
+}
+
+/// Microphone, deafen and show-app, in place of the playback controls.
+private struct SoundButtons: View {
+    let sound: SoundControl
+    let size: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+    let spacing: CGFloat
+
+    var body: some View {
+        HStack(spacing: spacing) {
+            SoundButton(sound.microphoneButton, size: size, width: width, height: height, action: sound.toggleMicrophone)
+            SoundButton(sound.deafenButton, size: size, width: width, height: height, action: sound.toggleDeafen)
+            SoundButton(("arrow.up.forward.app.fill", false, true, "Show the app"), size: size, width: width,
+                        height: height, action: sound.showApp)
+        }
+    }
+}
+
+/// Mute or deafen: red while on, like a call app's own buttons.
+private struct SoundButton: View {
+    let symbol: String
+    let isOn: Bool
+    let enabled: Bool
+    let help: String
+    let size: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+    let action: @MainActor () -> Void
+
+    init(_ button: (symbol: String, isOn: Bool, enabled: Bool, help: String), size: CGFloat, width: CGFloat,
+         height: CGFloat, action: @escaping @MainActor () -> Void) {
+        (symbol, isOn, enabled, help) = button
+        self.size = size
+        self.width = width
+        self.height = height
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(isOn ? Color(red: 1, green: 0.27, blue: 0.23) : .white)
+                .frame(width: width, height: height)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
         .help(help)
     }
 }

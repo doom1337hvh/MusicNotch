@@ -39,12 +39,13 @@ struct SearchControl {
 struct SearchButton: View {
     let search: SearchControl
     let size: CGFloat
+    var width: CGFloat = 26
 
     var body: some View {
         Button { search.send(.open) } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: size, weight: .semibold))
-                .frame(width: 26, height: 28)
+                .frame(width: width, height: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

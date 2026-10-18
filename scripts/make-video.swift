@@ -44,18 +44,19 @@ let notchCanvasWidth: CGFloat = 820
 /// with the bars always moving, and nothing (a full-screen app, the menu bar icon) in the way.
 let settings = [
     "openAnimation": "<integer>0</integer>", "spaceSwitchAnimation": "<integer>1</integer>",
-    "equalizerAnimation": "<integer>0</integer>", "notchStyle": "<integer>2</integer>",
+    "equalizerAnimation": "<integer>0</integer>", "notchStyle": "<integer>1</integer>",
     "notchOpenTrigger": "<integer>0</integer>", "showBesideNotch": "<true/>", "showTrackPeek": "<true/>",
     "showShuffleRepeat": "<true/>", "showSearch": "<true/>", "showArtwork": "<true/>",
     "showProgressBar": "<true/>", "lowResourceMode": "<false/>", "hideDuringSwipes": "<false/>",
     "hideInFullScreen": "<integer>0</integer>", "showMenuBarIcon": "<false/>", "settingsTab": "<integer>0</integer>",
     "updateBatching": "<integer>150</integer>", "openFromCameraOnly": "<true/>", "clickArtworkOpensApp": "<true/>",
-    "showOnExternalDisplays": "<false/>", "notchTheme": "<integer>0</integer>", "accentColour": "<integer>0</integer>", "followLowPowerMode": "<false/>",
+    "showOnExternalDisplays": "<false/>", "notchTheme": "<integer>1</integer>", "accentColour": "<integer>0</integer>", "followLowPowerMode": "<false/>",
 ]
 /// The Settings clip shows every setting at its default.
 let settingsDefaults = [
-    "equalizerAnimation": "<integer>1</integer>", "hideInFullScreen": "<integer>1</integer>",
-    "showMenuBarIcon": "<true/>", "followLowPowerMode": "<true/>",
+    "equalizerAnimation": "<integer>1</integer>", "hideInFullScreen": "<integer>0</integer>",
+    "showMenuBarIcon": "<true/>", "followLowPowerMode": "<true/>", "notchStyle": "<integer>1</integer>",
+    "notchTheme": "<integer>1</integer>",
 ]
 
 // MARK: The scenes
@@ -79,9 +80,6 @@ struct Scene {
     var isTour = false
     /// Settings of its own, on top of `settings`.
     var extraSettings: [String: String] = [:]
-    /// Puts the backdrop in a real window behind the notch, for glass to blur: the recording
-    /// leaves out every other window, so otherwise there's nothing behind it.
-    var needsBackdropWindow = false
 
     var output: URL {
         root.appendingPathComponent(isTour ? "docs/demo.gif" : "docs/clips/\(name).gif")
@@ -94,9 +92,13 @@ struct Scene {
 // beside the camera (Spotify -170, Chrome -148, Music 170; y 16).
 let park = (x: CGFloat(250), y: CGFloat(224))
 let scenes: [Scene] = [
+    // Compact, the default style, from the top centre of the screen: the controls row at y 62
+    // (shuffle -2, play 47, repeat 96, search 125, volume 155, for Music or Spotify), the
+    // first search result (-40, 101), and for an app on a call, microphone (60, 62) and
+    // deafen (88, 62).
     Scene(name: "tour", length: 13.0, height: 300,
-          path: [(-1, 250, 236), (0.4, 250, 236), (1.2, 4, 15), (2.1, 4, 15), (2.8, 0, 161), (4.9, 0, 161),
-                 (5.7, -157, 161), (6.4, -157, 161), (7.0, 120, 128), (8.2, 120, 128), (8.9, -40, 101),
+          path: [(-1, 250, 236), (0.4, 250, 236), (1.2, 4, 15), (2.1, 4, 15), (2.8, 47, 62), (4.9, 47, 62),
+                 (5.7, 125, 62), (6.4, 125, 62), (7.0, 150, 75), (8.2, 150, 75), (8.9, -40, 101),
                  (9.4, -40, 101), (10.4, 250, 236)],
           clicks: [3.0, 4.6, 6.2, 9.2], isTour: true),
     Scene(name: "closed", length: 4.8, height: 110),
@@ -105,7 +107,7 @@ let scenes: [Scene] = [
                  (3.8, 250, 92)],
           clicks: [2.5]),
     Scene(name: "compact", length: 6.4, height: 160,
-          path: [(-1, 250, 120), (0.3, 250, 120), (1.1, 4, 15), (1.6, 4, 15), (2.4, 45, 62), (4.6, 45, 62),
+          path: [(-1, 250, 120), (0.3, 250, 120), (1.1, 4, 15), (1.6, 4, 15), (2.4, 47, 62), (4.6, 47, 62),
                  (5.4, 250, 120)],
           clicks: [2.8, 4.2]),
     Scene(name: "full", length: 8.2,
@@ -113,28 +115,29 @@ let scenes: [Scene] = [
                  (2.8, -30, 123), (3.8, 55, 123), (3.9, 55, 123), (4.7, -108, 161), (5.2, -108, 161),
                  (5.6, 108, 161), (6.2, 108, 161), (7.0, park.x, park.y)],
           clicks: [5.0, 5.9], drags: [2.75...3.9]),
-    Scene(name: "sources", length: 8.4,
-          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.7, 4, 15), (2.6, 170, 16),
-                 (3.4, 170, 16), (4.2, -148, 16), (5.0, -148, 16), (5.8, -170, 16), (6.6, -170, 16),
-                 (7.4, park.x, park.y)],
+    // Eight apps: four icons each side of the camera, 22 pt apart, the outermost 175 pt out
+    // (YouTube -153, Spotify -175, Teams 175).
+    Scene(name: "sources", length: 8.4, height: 160,
+          path: [(-1, 250, 120), (0.3, 250, 120), (1.1, 4, 15), (1.7, 4, 15), (2.6, -153, 16),
+                 (3.4, -153, 16), (4.2, 175, 16), (5.0, 175, 16), (5.8, -175, 16), (6.6, -175, 16),
+                 (7.4, 250, 120)],
           clicks: [3.0, 4.6, 6.2]),
-    Scene(name: "glass", length: 8.4,
-          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.7, 4, 15), (2.6, 170, 16),
-                 (3.4, 170, 16), (4.2, -148, 16), (5.0, -148, 16), (5.8, -170, 16), (6.6, -170, 16),
-                 (7.4, park.x, park.y)],
-          clicks: [3.0, 4.6, 6.2], extraSettings: ["notchTheme": "<integer>1</integer>"], needsBackdropWindow: true),
     Scene(name: "search", length: 8.6,
-          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.4, 4, 15), (2.1, -157, 161),
-                 (2.7, -157, 161), (3.3, 120, 128), (4.3, 120, 128), (4.9, -40, 101), (5.5, -40, 101),
+          path: [(-1, park.x, park.y), (0.3, park.x, park.y), (1.1, 4, 15), (1.4, 4, 15), (2.1, 125, 62),
+                 (2.7, 125, 62), (3.3, 150, 75), (4.3, 150, 75), (4.9, -40, 101), (5.5, -40, 101),
                  (6.4, park.x, park.y)],
           clicks: [2.4, 5.2]),
+    Scene(name: "sound", length: 7.0, height: 160,
+          path: [(-1, 250, 120), (0.3, 250, 120), (1.1, 4, 15), (1.7, 4, 15), (2.5, 60, 62),
+                 (3.0, 60, 62), (3.9, 88, 62), (4.4, 88, 62), (5.4, 250, 120)],
+          clicks: [2.8, 4.2]),
     Scene(name: "new-track", length: 4.6, height: 140),
-    // Toolbar items from the window's top left: Animations 186, Shortcuts 253, Performance
-    // 326, About 394; y 50. (The Notch tab is taller than fits in a clip.)
-    Scene(name: "settings", length: 7.0,
-          path: [(-1, 230, 300), (0.4, 230, 300), (1.0, 186, 50), (1.8, 186, 50), (2.4, 253, 50), (3.2, 253, 50),
-                 (3.8, 326, 50), (4.6, 326, 50), (5.2, 394, 50)],
-          clicks: [1.4, 2.8, 4.2, 5.6], isSettings: true),
+    // Toolbar items from the window's top left: General 48, Notch 104, Appearance 170,
+    // Animations 244, Shortcuts 311, Performance 383, About 452; y 50.
+    Scene(name: "settings", length: 8.4,
+          path: [(-1, 230, 300), (0.4, 230, 300), (1.0, 104, 50), (1.8, 104, 50), (2.4, 170, 50), (3.2, 170, 50),
+                 (3.8, 244, 50), (4.6, 244, 50), (5.2, 383, 50), (6.0, 383, 50), (6.6, 452, 50)],
+          clicks: [1.4, 2.8, 4.2, 5.6, 7.0], isSettings: true),
 ]
 
 func pointer(_ scene: Scene, at t: Double) -> (point: CGPoint, pressed: Bool)? {
@@ -338,7 +341,8 @@ func record(_ scene: Scene) async throws {
     let region: CGRect
     let anchor: CGPoint
     if scene.isSettings, let frame = settingsWindow?.frame {
-        region = CGRect(x: frame.minX - 40, y: frame.minY - 40, width: frame.width + 80, height: 540)
+        // Tall enough for the tallest tab shown; the window grows down from its top.
+        region = CGRect(x: frame.minX - 40, y: frame.minY - 40, width: frame.width + 80, height: 700)
         anchor = CGPoint(x: 40, y: 40)
     } else {
         region = CGRect(x: (screen.frame.width - notchCanvasWidth) / 2, y: 0, width: notchCanvasWidth, height: scene.height)
@@ -358,7 +362,9 @@ func record(_ scene: Scene) async throws {
     configuration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(fps))
     configuration.queueDepth = 8
     var included = [musicNotch]
-    if scene.needsBackdropWindow {
+    // The backdrop in a real window behind the notch, for the glass to blur: the recording
+    // leaves out every other window, so otherwise there'd be nothing behind it.
+    if !scene.isSettings {
         let image = makeBackdrop(size, calm: true, notch: true), screenFrame = screen.frame
         await MainActor.run { backdropWindow = BackdropWindow(image, region: region, on: screenFrame) }
         try await Task.sleep(for: .milliseconds(300))

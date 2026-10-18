@@ -64,19 +64,29 @@ struct NotchGeometry: Equatable {
 
     /// Keep in sync with the paddings and row heights in `CompactView`. Shuffle, repeat and
     /// search add buttons to its one row, so the panel widens to leave the title its room.
-    func compactSize(showsProgress: Bool, showsModes: Bool = false, showsSearch: Bool = false,
-                     sourceCount: Int = 0) -> CGSize {
+    /// This is the panel's body; see `bandWidth` for the strip of app icons above it.
+    func compactSize(showsProgress: Bool, showsModes: Bool = false, showsSearch: Bool = false) -> CGSize {
         let content: CGFloat = 10 + 40 + (showsProgress ? 8 + 3 : 0) + 12
-        let extraButtons: CGFloat = (showsModes ? 2 * 26 : 0) + (showsSearch ? 26 : 0)
-        let width = max(collapsedSize.width + 40, 330 + extraButtons, widthForSourceIcons(sourceCount))
+        // Paddings, artwork, playback buttons, volume, gaps and the title's room; then shuffle
+        // and repeat (22 each) and search (24 and its gap).
+        let extraButtons: CGFloat = (showsModes ? 2 * 22 : 0) + (showsSearch ? 24 + 6 : 0)
+        let width = max(collapsedSize.width + 40, 292 + extraButtons)
         return CGSize(width: width, height: height + content)
     }
 
-    /// Keep in sync with the paddings and row heights in `ExpandedView`.
-    func expandedSize(showsProgress: Bool, sourceCount: Int = 0) -> CGSize {
+    /// Keep in sync with the paddings and row heights in `ExpandedView`. This is the panel's
+    /// body; see `bandWidth` for the strip of app icons above it.
+    func expandedSize(showsProgress: Bool) -> CGSize {
         let content: CGFloat = 12 + 56 + 14 + (showsProgress ? 18 + 14 : 0) + 30 + 16
-        let width = max(collapsedSize.width + 40, 400, widthForSourceIcons(sourceCount))
+        let width = max(collapsedSize.width + 40, 400)
         return CGSize(width: width, height: height + content)
+    }
+
+    /// The strip beside the camera housing at the top of an open panel: as wide as the body
+    /// below it, or wider to fit `sourceCount` app icons, in which case only the strip reaches
+    /// further out and the body keeps its width (see `NotchShape.bandInset`).
+    func bandWidth(forBody width: CGFloat, sourceCount: Int) -> CGFloat {
+        max(width, widthForSourceIcons(sourceCount))
     }
 
     /// The open panel while searching: the field, then Music's results (`resultRows`) or a

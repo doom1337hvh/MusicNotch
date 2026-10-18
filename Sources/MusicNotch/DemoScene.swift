@@ -12,10 +12,11 @@ enum DemoScene: String {
     case minimal
     case compact
     case full
+    /// Lots of apps with media at once, and a call.
     case sources
-    /// The sources scene with the glass theme.
-    case glass
     case search
+    /// A call (Teams) with the music paused behind it; the microphone muted, then the call deafened.
+    case sound
     case newTrack = "new-track"
     case settings
 
@@ -32,6 +33,27 @@ enum DemoScene: String {
         ("Midnight Static", "The Low Orbit", 241, 95, 2),
     ]
 
+    /// The app on a call in the sound and sources scenes, playing sound without Now Playing
+    /// (see `SoundApps`).
+    static let soundApp = SoundApp(bundleID: "com.microsoft.teams2", name: "Microsoft Teams",
+                                   url: URL(fileURLWithPath: "/Applications/Microsoft Teams.app"))
+    /// YouTube and SoundCloud installed as Chrome apps, so they show their own icons.
+    static let youTube = "com.google.Chrome.app.agimnkijcaahngcdmfeangaknmldooml"
+    static let soundCloud = "com.google.Chrome.app.eikjhbkpemdappjfcmdeeeamdpkgabmk"
+
+    /// A call in the sound scene; in the sources scene it's just playing sound, so the music
+    /// stays first.
+    var soundApps: [SoundApp] {
+        switch self {
+        case .sound:
+            var call = Self.soundApp
+            call.usesMicrophone = true
+            return [call]
+        case .sources: return [Self.soundApp]
+        default: return []
+        }
+    }
+
     static let searchResults = [
         SearchResult(id: "1", title: "Neon Tides", artist: "Lumen Drive"),
         SearchResult(id: "2", title: "Neon Skyline", artist: "The Low Orbit"),
@@ -42,17 +64,18 @@ enum DemoScene: String {
     var app: String { self == .tour || self == .search ? "com.apple.Music" : "com.spotify.client" }
     var firstTrack: Int { self == .tour || self == .search ? 1 : 0 }
 
-    /// What's playing: `track` of `tracks` at `elapsed` seconds in. The sources and glass scenes add a
-    /// paused video in Chrome and a paused song in Music; Settings has nothing playing.
+    /// What's playing: `track` of `tracks` at `elapsed` seconds in. The sources scene adds paused
+    /// media in six more apps; Settings has nothing playing.
     func update(track: Int, playing: Bool, elapsed: TimeInterval) -> SessionsUpdate {
         guard self != .settings else { return SessionsUpdate(sessions: [], electedBundleID: nil) }
-        let main = Self.session(app, track: track, playing: playing, elapsed: elapsed)
-        guard self == .sources || self == .glass else { return SessionsUpdate(sessions: [main], electedBundleID: main.id) }
-        return SessionsUpdate(sessions: [
-            main,
-            Self.session("com.google.Chrome", track: 2, playing: false, elapsed: Self.tracks[2].elapsed),
-            Self.session("com.apple.Music", track: 1, playing: false, elapsed: Self.tracks[1].elapsed),
-        ], electedBundleID: main.id)
+        // Paused for the call.
+        let main = Self.session(app, track: track, playing: playing && self != .sound, elapsed: elapsed)
+        guard self == .sources else { return SessionsUpdate(sessions: [main], electedBundleID: main.id) }
+        let paused = [(Self.youTube, 2), ("com.apple.Music", 1), (Self.soundCloud, 0), ("com.apple.Safari", 1),
+                      ("com.apple.podcasts", 2), ("com.apple.TV", 0)]
+        return SessionsUpdate(sessions: [main] + paused.map { bundleID, track in
+            Self.session(bundleID, track: track, playing: false, elapsed: Self.tracks[track].elapsed)
+        }, electedBundleID: main.id)
     }
 
     /// The scene, in seconds from its start. scripts/make-video.swift draws the pointer to
@@ -60,7 +83,7 @@ enum DemoScene: String {
     var steps: [(time: Double, step: DemoStep)] {
         switch self {
         case .tour:
-            [(1.4, .open(.full)), (3.0, .playing(false)), (4.6, .playing(true)), (6.2, .startSearch)]
+            [(1.4, .open(.compact)), (3.0, .playing(false)), (4.6, .playing(true)), (6.2, .startSearch)]
                 + Self.typing("neon", from: 6.7)
                 + [(7.8, .search(text: "neon", results: Self.searchResults)),
                    // Choosing "Neon Tides" closes the notch; the new track then peeks out by itself.
@@ -76,19 +99,22 @@ enum DemoScene: String {
                 + Self.scrubbing(from: 0.38, to: 0.72, start: 2.8, end: 3.8)
                 + [(3.9, .seek(0.72)),
                    (5.0, .modes(PlaybackModes(shuffle: false, repeatMode: .off))),
-                   (5.9, .modes(PlaybackModes(shuffle: false, repeatMode: .all))),
+                   (5.9, .modes(PlaybackModes(shuffle: false, repeatMode: .one))),
                    (7.4, .collapse)]
-        case .sources, .glass:
-            [(1.2, .open(.full)), (3.0, .select("com.apple.Music")), (4.6, .select("com.google.Chrome")),
+        case .sources:
+            [(1.2, .open(.compact)), (3.0, .select(Self.youTube)), (4.6, .select("sound:" + Self.soundApp.bundleID)),
              (6.2, .select("com.spotify.client")), (7.6, .collapse)]
         case .search:
-            [(1.2, .open(.full)), (2.4, .startSearch)]
+            [(1.2, .open(.compact)), (2.4, .startSearch)]
                 + Self.typing("neon", from: 2.9)
                 + [(4.0, .search(text: "neon", results: Self.searchResults)), (5.2, .closeSearch), (5.6, .track(0))]
+        case .sound:
+            [(1.2, .open(.compact)), (2.8, .microphone(muted: true)), (4.2, .deafen(true)), (5.8, .collapse)]
         case .newTrack:
             [(1.0, .track(2))]
         case .settings:
-            [(1.4, .settingsTab(3)), (2.8, .settingsTab(4)), (4.2, .settingsTab(5)), (5.6, .settingsTab(6))]
+            [(1.4, .settingsTab(1)), (2.8, .settingsTab(2)), (4.2, .settingsTab(3)), (5.6, .settingsTab(5)),
+             (7.0, .settingsTab(6))]
         }
     }
 
@@ -210,4 +236,7 @@ enum DemoStep {
     /// As if a result was chosen: the search closes, and the notch with it.
     case closeSearch
     case settingsTab(Int)
+    /// The sound scene's buttons.
+    case microphone(muted: Bool)
+    case deafen(Bool)
 }

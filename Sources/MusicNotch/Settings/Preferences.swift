@@ -161,6 +161,7 @@ final class Preferences {
         static let showBesideNotch = "showBesideNotch"
         static let showShuffleRepeat = "showShuffleRepeat"
         static let showSearch = "showSearch"
+        static let showSoundApps = "showSoundApps"
         static let hideInFullScreen = "hideInFullScreen"
         static let openFromCameraOnly = "openFromCameraOnly"
         static let showOnExternalDisplays = "showOnExternalDisplays"
@@ -187,6 +188,7 @@ final class Preferences {
     @ObservationIgnored var onSwipeOptionChange: (() -> Void)?
     @ObservationIgnored var onFullScreenOptionChange: (() -> Void)?
     @ObservationIgnored var onHotkeysChange: (() -> Void)?
+    @ObservationIgnored var onSoundAppsChange: (() -> Void)?
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private let power = PowerMonitor()
 
@@ -221,6 +223,13 @@ final class Preferences {
     /// A search button in the Compact and Full panels, for apps that can be searched.
     var showSearch: Bool {
         didSet { defaults.set(showSearch, forKey: Key.showSearch) }
+    }
+    /// Apps playing sound without Now Playing, like Teams or games (see `SoundApps`).
+    var showSoundApps: Bool {
+        didSet {
+            defaults.set(showSoundApps, forKey: Key.showSoundApps)
+            onSoundAppsChange?()
+        }
     }
     /// Only the camera area opens the closed notch; the parts beside it let the pointer
     /// through to the menu bar.
@@ -316,17 +325,20 @@ final class Preferences {
         }
         clickArtworkOpensApp = bool(Key.clickArtworkOpensApp, true)
         notchStyle = (defaults.object(forKey: Key.notchStyle) as? Int)
-            .flatMap(NotchStyle.init(rawValue:)) ?? .full
+            .flatMap(NotchStyle.init(rawValue:)) ?? .compact
         openTrigger = (defaults.object(forKey: Key.openTrigger) as? Int)
             .flatMap(NotchOpenTrigger.init(rawValue:)) ?? .hover
-        theme = (defaults.object(forKey: Key.theme) as? Int).flatMap(NotchTheme.init(rawValue:)) ?? .black
+        theme = (defaults.object(forKey: Key.theme) as? Int).flatMap(NotchTheme.init(rawValue:)) ?? .glass
         showTrackPeek = bool(Key.showTrackPeek, true)
         showBesideNotch = bool(Key.showBesideNotch, true)
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
         showSearch = bool(Key.showSearch, true)
+        showSoundApps = bool(Key.showSoundApps, true)
         openFromCameraOnly = bool(Key.openFromCameraOnly, true)
         hideInFullScreen = (defaults.object(forKey: Key.hideInFullScreen) as? Int)
-            .flatMap(FullScreenHiding.init(rawValue:)) ?? .playingApp
+            // Never by default: macOS can't tell a full-screen video from a browser that's in
+            // full screen, so hiding would also hide it whenever that browser plays anything.
+            .flatMap(FullScreenHiding.init(rawValue:)) ?? .never
         showOnExternalDisplays = bool(Key.showOnExternalDisplays, false)
         showMenuBarIcon = bool(Key.showMenuBarIcon, true)
         lowResourceMode = bool(Key.lowResourceMode, false)

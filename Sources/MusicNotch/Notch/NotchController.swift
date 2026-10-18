@@ -19,11 +19,14 @@ struct NotchActions {
     var readModes: @MainActor (String, @escaping @MainActor @Sendable (PlaybackModes?) -> Void) -> Void
     /// These report the modes the app was set to, or nil if it couldn't be controlled.
     var toggleShuffle: @MainActor (String, @escaping @MainActor @Sendable (PlaybackModes?) -> Void) -> Void
-    var cycleRepeat: @MainActor (String, @escaping @MainActor @Sendable (PlaybackModes?) -> Void) -> Void
+    var setRepeat: @MainActor (String, RepeatMode, @escaping @MainActor @Sendable (PlaybackModes?) -> Void) -> Void
     /// Search (see `MediaSearch`): Music's library, a result to play, or a hand-off.
     var searchLibrary: @MainActor (String, @escaping @MainActor @Sendable ([SearchResult]?) -> Void) -> Void
     var playSearchResult: @MainActor (SearchResult) -> Void
     var handOffSearch: @MainActor (String, SearchTarget) -> Void
+    /// For apps playing sound without Now Playing; see `Microphone` and `SoundApps`.
+    var toggleMicrophone: @MainActor () -> Void
+    var toggleDeafen: @MainActor (String) -> Void
     var contextMenu: @MainActor () -> NSMenu
 }
 
@@ -37,7 +40,11 @@ final class NotchState {
     var expandedStyle: NotchStyle = .full
     /// Open only briefly to show a new track ("Show new tracks").
     var isTrackPeek = false
+    /// The open panel: as wide as the strip of app icons at the top, and as tall as the body.
     var expandedSize: CGSize
+    /// The body below the strip; narrower than `expandedSize` when the strip reaches further
+    /// out to fit many app icons.
+    var expandedBodyWidth: CGFloat
     /// Horizontal offset of the collapsed artwork and equalizer, for the Slide animation.
     var contentOffset: CGFloat = 0
     /// The whole notch's scale, and the contents' blur, for the other desktop-switch animations.
@@ -64,7 +71,9 @@ final class NotchState {
 
     init(geometry: NotchGeometry) {
         self.geometry = geometry
-        expandedSize = geometry.expandedSize(showsProgress: true)
+        let size = geometry.expandedSize(showsProgress: true)
+        expandedSize = size
+        expandedBodyWidth = size.width
     }
 }
 
@@ -81,8 +90,8 @@ final class NotchController {
     private let spaces = SpaceObserver()
     private let swipes = SwipeMonitor()
     private var swipeEndTask: Task<Void, Never>?
-    /// Set after a swipe while waiting for macOS to say which desktop it landed on.
-    private var awaitingSwipeDestination = false
+    /// From the start of a swipe ("Hide while swiping") until the panels come back after it.
+    private var isSwiping = false
     /// While swipes are being watched, panels live in a Space above every desktop, so they
     /// never ride along with a sliding desktop. Created the first time it's needed.
     private var pinnedSpace: NotchSpace?
@@ -95,15 +104,19 @@ final class NotchController {
         spaces.onSwitch = { [weak self] displayUUID, direction in
             // A demo clip (`DemoScene`) holds still whatever the desktop does.
             guard let self, DemoScene.current == nil else { return }
+            Self.logger.debug("""
+                switch reported: display=\(displayUUID ?? "all", privacy: .public) \
+                direction=\(String(describing: direction), privacy: .public) swiping=\(self.isSwiping, privacy: .public)
+                """)
             // Show or hide for full screen first, so a panel that's about to hide doesn't
-            // play its appear animation.
-            updateVisibility()
-            if awaitingSwipeDestination {
-                awaitingSwipeDestination = false
-                swipeEndTask?.cancel()
-                panels.forEach { $0.appearAfterSwipe(direction: direction) }
-            }
-            for panel in panels where displayUUID == nil || panel.displayUUID == displayUUID {
+            // play its appear animation, and one that comes back (say, on leaving a
+            // full-screen app) plays it rather than popping in.
+            let shownBefore = panels.map(\.isShown)
+            updateVisibility(afterSwitch: true, direction: direction)
+            // The swipe has landed, even if its end went unreported.
+            if isSwiping { finishSwipe(direction: direction) }
+            for (panel, wasShown) in zip(panels, shownBefore)
+            where wasShown && (displayUUID == nil || panel.displayUUID == displayUUID) {
                 panel.desktopSwitched(direction: direction)
             }
         }
@@ -113,7 +126,9 @@ final class NotchController {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.updateVisibility()
+                // Switching desktops activates an app there before macOS reports the switch,
+                // so a panel coming back here is often part of one.
+                self.updateVisibility(afterSwitch: true)
                 // Coming back from allowing Input Monitoring in System Settings: start listening.
                 if self.prefs.hideDuringSwipes && !self.pinsPanels { self.updateSwipeMonitoring() }
             }
@@ -151,7 +166,14 @@ final class NotchController {
 
     private func swipeBegan() {
         swipeEndTask?.cancel()
+        isSwiping = true
         panels.forEach { $0.hideForSwipe() }
+        // Should the swipe's end go unreported, don't leave the panels hidden.
+        swipeEndTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.finishSwipe(direction: nil)
+        }
     }
 
     /// Brings the panels back as the desktop settles after the swipe is released. macOS only
@@ -165,13 +187,18 @@ final class NotchController {
         swipeEndTask?.cancel()
         let waitForDestination = prefs.hideInFullScreen != .never
             && direction.map(spaces.swipeLandsOnFullScreen) == true
-        awaitingSwipeDestination = waitForDestination
         swipeEndTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(waitForDestination ? 1200 : 400))
-            guard !Task.isCancelled, let self else { return }
-            awaitingSwipeDestination = false
-            panels.forEach { $0.appearAfterSwipe(direction: direction) }
+            guard !Task.isCancelled else { return }
+            self?.finishSwipe(direction: direction)
         }
+    }
+
+    /// Ends the swipe and brings the panels back.
+    private func finishSwipe(direction: SpaceObserver.Direction?) {
+        swipeEndTask?.cancel()
+        isSwiping = false
+        panels.forEach { $0.appearAfterSwipe(direction: direction) }
     }
 
     func rebuildPanels() {
@@ -196,6 +223,12 @@ final class NotchController {
         panels.forEach { $0.showTrackPeek() }
     }
 
+    /// The shown app or track changed: an open panel fits the new one's buttons, and a
+    /// closed one briefly shows it ("Show new tracks").
+    func trackChanged() {
+        panels.forEach { $0.trackChanged() }
+    }
+
     /// Acts out a step of a README clip (see `DemoScene.steps`).
     func runDemoStep(_ step: DemoStep) {
         panels.forEach { $0.runDemoStep(step) }
@@ -214,10 +247,20 @@ final class NotchController {
     /// Re-checks which panels should show, e.g. after the media or the "Hide in full screen"
     /// setting changed.
     func updateVisibility() {
+        updateVisibility(afterSwitch: false)
+    }
+
+    /// `afterSwitch`: the change comes with a desktop switch, so a panel that comes back plays
+    /// "Appear on the new desktop", or during a swipe, waits to appear with the others.
+    private func updateVisibility(afterSwitch: Bool, direction: SpaceObserver.Direction? = nil) {
+        let appearance: NotchPanelController.Appearance = !afterSwitch ? .immediately
+            : isSwiping ? .afterSwipe : .animated(direction)
         for panel in panels {
-            panel.setVisible(isVisible && !isScreenLocked && !hidesForFullScreen(panel))
+            panel.setVisible(isVisible && !isScreenLocked && !hidesForFullScreen(panel), appearance: appearance)
         }
     }
+
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MusicNotch", category: "switch")
 
     private func hidesForFullScreen(_ panel: NotchPanelController) -> Bool {
         switch prefs.hideInFullScreen {
@@ -261,7 +304,7 @@ private final class NotchPanelController {
     private var resignKeyObserver: NSObjectProtocol?
     /// Closes a notch opened from the keyboard if the pointer never comes over it.
     private var keyboardCloseTask: Task<Void, Never>?
-    private var isShown = false
+    private(set) var isShown = false
     private var isHiddenForSwipe = false
     /// The animation to start once the panel is actually on screen (see `animateIn`).
     private var pendingSlide: (() -> Void)?
@@ -333,19 +376,36 @@ private final class NotchPanelController {
         hoverChanged(inside)
     }
 
-    func setVisible(_ visible: Bool) {
+    /// How a hidden panel comes back.
+    enum Appearance {
+        case immediately
+        /// With "Appear on the new desktop", after a desktop switch.
+        case animated(SpaceObserver.Direction?)
+        /// Out of sight until the swipe under way ends, then with the other panels.
+        case afterSwipe
+    }
+
+    func setVisible(_ visible: Bool, appearance: Appearance = .immediately) {
         guard visible != isShown else { return }
         isShown = visible
         if visible {
+            Self.logger.debug("showing: \(String(describing: appearance), privacy: .public)")
             // The target sits under the panel, so the panel gets the pointer whenever it takes it.
             if let hotspot {
                 hotspot.orderFrontRegardless()
                 space?.add(hotspot)
             }
-            panel.alphaValue = 1
+            if case .immediately = appearance {
+                panel.alphaValue = 1
+            } else {
+                panel.alphaValue = Self.hiddenAlpha
+            }
+            if case .afterSwipe = appearance { isHiddenForSwipe = true }
             panel.orderFrontRegardless()
             space?.add(panel)
+            if case .animated(let direction) = appearance { appear(direction: direction) }
         } else {
+            isHiddenForSwipe = false
             hotspot?.orderOut(nil)
             hoverTask?.cancel()
             trackPeekTask?.cancel()
@@ -414,11 +474,25 @@ private final class NotchPanelController {
         }
         // Slide without a known direction falls back to the plain fade.
         let motion = animation.motion(direction: direction, geometry: state.geometry)
-        if let motion { animateIn(from: motion.start, curve: motion.curve) }
-        // The whole notch fades in, so its black shape emerges with the artwork instead of
-        // popping in under it. The window server runs the fade; the app does no per-frame work.
+        Self.logger.debug("""
+            appearing: \(String(describing: animation), privacy: .public) \
+            direction=\(String(describing: direction), privacy: .public) motion=\(motion != nil, privacy: .public) \
+            onScreen=\(self.panel.occlusionState.contains(.visible), privacy: .public)
+            """)
+        if let motion {
+            // The fade starts with the motion, which may wait for the window to be on screen;
+            // fading in first would show the notch at its starting point, waiting.
+            animateIn(from: motion.start, curve: motion.curve)
+        } else {
+            fadeIn(duration: 0.3)
+        }
+    }
+
+    /// The whole notch fades in, so its black shape emerges with the artwork instead of
+    /// popping in under it. The window server runs the fade; the app does no per-frame work.
+    private func fadeIn(duration: TimeInterval) {
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = motion == nil ? 0.3 : 0.18
+            context.duration = duration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
         }
@@ -464,6 +538,7 @@ private final class NotchPanelController {
         panel.contentView?.layoutSubtreeIfNeeded()
 
         pendingSlide = { [weak self] in
+            self?.fadeIn(duration: 0.18)
             withAnimation(curve) {
                 self?.state.contentOffset = 0
                 self?.state.appearScale = 1
@@ -538,10 +613,24 @@ private final class NotchPanelController {
     }
 
     /// "Show new tracks": briefly opens a banner with the new track, then closes again.
+    func trackChanged() {
+        guard state.isExpanded, !state.isTrackPeek else { return showTrackPeek() }
+        // While searching, the panel is sized for the search; it fits again when that closes.
+        guard state.search == nil else { return }
+        let (size, bodyWidth) = panelSize(style: state.expandedStyle)
+        guard size != state.expandedSize || bodyWidth != state.expandedBodyWidth else { return }
+        growWindow(toFit: size)
+        withAnimation(.smooth(duration: 0.25)) {
+            state.expandedSize = size
+            state.expandedBodyWidth = bodyWidth
+        }
+    }
+
     func showTrackPeek(stayOpen: Bool = false) {
         guard isShown, prefs.showTrackPeek || stayOpen, !isOpen, !isHiddenForSwipe else { return }
         let size = state.geometry.trackPeekSize
         state.expandedSize = size
+        state.expandedBodyWidth = size.width
         state.isTrackPeek = true
         setWindowSize(CGSize(width: size.width + 2 * Self.overshootMargin, height: size.height + Self.overshootMargin))
         withAnimation(prefs.effectiveOpenAnimation.opening) { state.isExpanded = true }
@@ -572,7 +661,7 @@ private final class NotchPanelController {
             state.modesBundleID = model.snapshot?.bundleID
             state.modes = modes
         // The app delegate changes what's playing, and Settings.
-        case .playing, .track, .select, .settingsTab: break
+        case .playing, .track, .select, .settingsTab, .microphone, .deafen: break
         }
     }
 
@@ -668,22 +757,25 @@ private final class NotchPanelController {
     }
 
     /// Opens the Compact or Full panel: `style`, or else the one chosen in Settings.
-    /// The Compact or Full panel's size for what's playing.
-    private func panelSize(style: NotchStyle) -> CGSize {
+    /// The Compact or Full panel's size for what's playing, and its body's width: narrower
+    /// when the strip of app icons at the top reaches further out.
+    private func panelSize(style: NotchStyle) -> (size: CGSize, bodyWidth: CGFloat) {
         let showsProgress = prefs.effectiveProgressBar && model.snapshot?.duration != nil
         let showsModes = prefs.showShuffleRepeat
             && model.snapshot.map { AppPlaybackModes.supports(bundleID: $0.bundleID) } == true
-        let showsSearch = prefs.showSearch && model.snapshot.flatMap { SearchTarget.forApp(of: $0) } != nil
-        return style == .compact
-            ? state.geometry.compactSize(showsProgress: showsProgress, showsModes: showsModes,
-                                         showsSearch: showsSearch, sourceCount: model.sessions.count)
-            : state.geometry.expandedSize(showsProgress: showsProgress, sourceCount: model.sessions.count)
+        let showsSearch = prefs.showSearch
+            && model.snapshot.flatMap { $0.isSoundOnly ? nil : SearchTarget.forApp(of: $0) } != nil
+        let body = style == .compact
+            ? state.geometry.compactSize(showsProgress: showsProgress, showsModes: showsModes, showsSearch: showsSearch)
+            : state.geometry.expandedSize(showsProgress: showsProgress)
+        let band = state.geometry.bandWidth(forBody: body.width, sourceCount: model.sessions.count)
+        return (CGSize(width: band, height: body.height), body.width)
     }
 
     private func expand(style: NotchStyle? = nil) {
         let style = style ?? prefs.notchStyle
         state.expandedStyle = style
-        state.expandedSize = panelSize(style: style)
+        (state.expandedSize, state.expandedBodyWidth) = panelSize(style: style)
         // Grow the transparent window first (with room for the spring's overshoot),
         // then animate the shape inside it.
         let margin = Self.overshootMargin
@@ -777,7 +869,7 @@ private final class NotchPanelController {
         relinquishKey()
         withAnimation(.smooth(duration: 0.25)) {
             state.search = nil
-            state.expandedSize = panelSize(style: state.expandedStyle)
+            (state.expandedSize, state.expandedBodyWidth) = panelSize(style: state.expandedStyle)
         }
     }
 
