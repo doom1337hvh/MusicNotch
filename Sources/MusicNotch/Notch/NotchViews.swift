@@ -13,7 +13,12 @@ struct NotchRootView: View {
         // With nothing beside the closed notch, it's hidden inside the camera housing (or,
         // without a notch, an invisible target) until it opens.
         let hidesClosed = !prefs.showBesideNotch && !expanded && !peeking
-        let barSize = peeking ? geometry.peekSize : geometry.closedSize(showsContent: prefs.showBesideNotch)
+        let closed = geometry.closedSize(showsContent: prefs.showBesideNotch)
+        // Expand (switching desktops) grows the closed notch out from the housing's own width.
+        let housingWidth = geometry.hasNotch ? geometry.notchWidth : 0
+        let grownWidth = prefs.showBesideNotch
+            ? housingWidth + (closed.width - housingWidth) * state.appearGrowth : closed.width
+        let barSize = peeking ? geometry.peekSize : CGSize(width: grownWidth, height: closed.height)
         let size = expanded ? state.expandedSize : barSize
         let compact = state.expandedStyle == .compact || state.isTrackPeek
         let sources = SourcesInfo(sessions: model.sessions, displayedID: model.displayedSessionID,
@@ -68,9 +73,12 @@ struct NotchRootView: View {
                         }
                     }
                     .frame(width: state.expandedSize.width, height: state.expandedSize.height, alignment: .top)
+                        // A new track's peek fades its contents in and out more slowly.
                         .transition(.asymmetric(
-                            insertion: prefs.effectiveOpenAnimation.contentArrival,
-                            removal: .opacity.animation(.easeOut(duration: 0.12))
+                            insertion: state.isTrackPeek && prefs.effectiveOpenAnimation != .instant
+                                ? .opacity.animation(.easeOut(duration: 0.35).delay(0.1))
+                                : prefs.effectiveOpenAnimation.contentArrival,
+                            removal: .opacity.animation(.easeOut(duration: state.isTrackPeek ? 0.25 : 0.12))
                         ))
                 } else if !hidesClosed {
                     CollapsedView(snapshot: snapshot, prefs: prefs, geometry: geometry, actions: actions,
@@ -98,6 +106,8 @@ struct NotchRootView: View {
         .contentShape(shape)
         // Desktop-switch Zoom and Bounce; at rest this does nothing.
         .scaleEffect(state.appearScale, anchor: .top)
+        // Tells the controller the switch animation's starting point is in place.
+        .onChange(of: state.appearStart) { _, start in state.onAppearStartApplied?(start) }
         .onHover { state.onHover?($0) }
         // Buttons, icons and the artwork inside take their own clicks first.
         .onTapGesture { state.onTap?() }
@@ -703,12 +713,15 @@ private struct ArtworkView: View {
     let cornerRadius: CGFloat
 
     var body: some View {
-        Group {
+        // A new cover crossfades in rather than swapping.
+        ZStack {
             if let artwork {
                 Image(decorative: artwork.image, scale: 1)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
+                    .id(artwork.id)
+                    .transition(.opacity)
             } else {
                 ZStack {
                     Color.white.opacity(0.12)
@@ -720,6 +733,7 @@ private struct ArtworkView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .animation(.easeInOut(duration: 0.35), value: artwork?.id)
     }
 }
 

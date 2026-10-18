@@ -163,7 +163,7 @@ Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by ope
 
 **Animations**
 - **Open animation:** Bouncy (default), Pop, Blur or Instant.
-- **Appear on the new desktop:** Fade (default), Slide, Zoom, Bounce, Blur or None.
+- **Appear on the new desktop:** Fade (default), Slide, Expand (the artwork and bars grow out from behind the camera), Zoom, Bounce, Blur or None.
 - **Hide while swiping** (off by default): hides the notch as soon as a three-finger swipe begins, instead of letting it slide away with the old desktop. Needs Input Monitoring.
 
 **Shortcuts:** open or close the notch, play/pause, next track, previous track. None are set by default. Click a field, then press the keys; Delete clears it. A notch opened from the keyboard stays open while the pointer is over it, and otherwise closes after a few seconds.

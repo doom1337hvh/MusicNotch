@@ -39,6 +39,8 @@ enum EqualizerAnimation: Int, CaseIterable, Identifiable {
 enum SpaceSwitchAnimation: Int, CaseIterable, Identifiable {
     case fade = 1
     case slide = 0
+    /// Grows the closed notch out from behind the camera housing.
+    case expand = 7
     case zoom = 3
     case bounce = 4
     case blur = 6
@@ -50,6 +52,7 @@ enum SpaceSwitchAnimation: Int, CaseIterable, Identifiable {
         switch self {
         case .fade: "Fade"
         case .slide: "Slide"
+        case .expand: "Expand"
         case .zoom: "Zoom"
         case .bounce: "Bounce"
         case .blur: "Blur"

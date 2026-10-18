@@ -39,6 +39,16 @@ enum OpenAnimation: Int, CaseIterable, Identifiable {
         }
     }
 
+    /// The notch opening by itself to show a new track ("Show new tracks"): gentler and a
+    /// little slower than opening on hover, since it's not something the user did.
+    var trackPeekOpening: Animation? {
+        self == .instant ? nil : .spring(response: 0.55, dampingFraction: 0.92)
+    }
+
+    var trackPeekClosing: Animation? {
+        self == .instant ? nil : .smooth(duration: 0.45)
+    }
+
     /// How the open panel's contents appear as the notch grows.
     var contentArrival: AnyTransition {
         switch self {
@@ -58,6 +68,12 @@ struct AppearStart {
     /// Blurs the artwork and bars only; the black shape stays sharp and flush with the top
     /// of the screen, like the hardware notch.
     var contentBlur: CGFloat = 0
+    /// How far the closed notch has grown out of the camera housing: 0 is the housing's own
+    /// width, with the artwork and bars tucked behind it, and 1 is its full width.
+    var growth: CGFloat = 1
+    /// Whether the notch fades in as well. Growing out of the housing starts out of sight
+    /// anyway, so it doesn't.
+    var fades = true
 }
 
 extension SpaceSwitchAnimation {
@@ -76,6 +92,8 @@ extension SpaceSwitchAnimation {
             return (AppearStart(scale: 0.7), .spring(response: 0.42, dampingFraction: 0.6))
         case .blur:
             return (AppearStart(contentBlur: 12), .smooth(duration: 0.4))
+        case .expand:
+            return (AppearStart(growth: 0, fades: false), .spring(response: 0.5, dampingFraction: 0.82))
         case .fade, .none:
             return nil
         }

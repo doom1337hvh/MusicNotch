@@ -124,7 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak notch] _ in
-            MainActor.assumeIsolated { notch?.rebuildPanels() }
+            MainActor.assumeIsolated { notch?.screensChanged() }
         }
 
         // `kill` and similar send SIGTERM, which would skip applicationWillTerminate

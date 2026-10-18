@@ -356,7 +356,7 @@ private struct AnimationSettings: View {
                     ForEach(SpaceSwitchAnimation.allCases) { Text($0.label).tag($0) }
                 } label: {
                     Text("Appear on the new desktop")
-                    Text("Fade fades the whole notch in. Slide also brings the artwork and bars in from the side the new desktop came from.")
+                    Text("Fade fades the whole notch in. Slide brings the artwork and bars in from the side the new desktop came from. Expand grows them out from behind the camera.")
                 }
                 .disabled(prefs.isLowResource)
                 Toggle(isOn: hideDuringSwipes) {

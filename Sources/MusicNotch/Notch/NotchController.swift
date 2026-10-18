@@ -50,6 +50,11 @@ final class NotchState {
     /// The whole notch's scale, and the contents' blur, for the other desktop-switch animations.
     var appearScale: CGFloat = 1
     var appearContentBlur: CGFloat = 0
+    /// How far the closed notch has grown out of the camera housing, for Expand (see `AppearStart`).
+    var appearGrowth: CGFloat = 1
+    /// Counts the desktop-switch animations' starting points: changed along with them, so the
+    /// view can report when it has applied one (`onAppearStartApplied`).
+    var appearStart = 0
     /// The volume slider, shown in place of the playback buttons for apps with their own volume.
     var showsVolume = false
     var volumeBundleID: String?
@@ -68,6 +73,7 @@ final class NotchState {
     @ObservationIgnored var onScrubEnded: (() -> Void)?
     @ObservationIgnored var onSearch: ((SearchEvent) -> Void)?
     @ObservationIgnored var onTap: (() -> Void)?
+    @ObservationIgnored var onAppearStartApplied: ((Int) -> Void)?
 
     init(geometry: NotchGeometry) {
         self.geometry = geometry
@@ -92,6 +98,10 @@ final class NotchController {
     private var swipeEndTask: Task<Void, Never>?
     /// From the start of a swipe ("Hide while swiping") until the panels come back after it.
     private var isSwiping = false
+    /// Fingers still on the trackpad: between a swipe's start and its release.
+    private var isSwipeHeld = false
+    /// A rebuild waiting for a display change to settle (see `screensChanged`).
+    private var rebuildTask: Task<Void, Never>?
     /// While swipes are being watched, panels live in a Space above every desktop, so they
     /// never ride along with a sliding desktop. Created the first time it's needed.
     private var pinnedSpace: NotchSpace?
@@ -113,8 +123,10 @@ final class NotchController {
             // full-screen app) plays it rather than popping in.
             let shownBefore = panels.map(\.isShown)
             updateVisibility(afterSwitch: true, direction: direction)
-            // The swipe has landed, even if its end went unreported.
-            if isSwiping { finishSwipe(direction: direction) }
+            // The swipe has landed, even if its release went unreported. Not while one is still
+            // held, though: swiping again quickly, the last switch's report can arrive just
+            // after the next swipe begins, and would bring the notch back mid-swipe.
+            if isSwiping && !isSwipeHeld { finishSwipe(direction: direction) }
             for (panel, wasShown) in zip(panels, shownBefore)
             where wasShown && (displayUUID == nil || panel.displayUUID == displayUUID) {
                 panel.desktopSwitched(direction: direction)
@@ -167,6 +179,7 @@ final class NotchController {
     private func swipeBegan() {
         swipeEndTask?.cancel()
         isSwiping = true
+        isSwipeHeld = true
         panels.forEach { $0.hideForSwipe() }
         // Should the swipe's end go unreported, don't leave the panels hidden.
         swipeEndTask = Task { [weak self] in
@@ -185,6 +198,7 @@ final class NotchController {
     /// after 1.2 s.
     private func swipeEnded(direction: SpaceObserver.Direction?) {
         swipeEndTask?.cancel()
+        isSwipeHeld = false
         let waitForDestination = prefs.hideInFullScreen != .never
             && direction.map(spaces.swipeLandsOnFullScreen) == true
         swipeEndTask = Task { [weak self] in
@@ -198,20 +212,56 @@ final class NotchController {
     private func finishSwipe(direction: SpaceObserver.Direction?) {
         swipeEndTask?.cancel()
         isSwiping = false
+        isSwipeHeld = false
         panels.forEach { $0.appearAfterSwipe(direction: direction) }
     }
 
+    /// macOS says the displays changed. Switching to or from a full-screen app can say so too
+    /// (the menu bar and Dock change), and mid-switch a screen can briefly read as having no
+    /// notch; a notch rebuilt then would come up the wrong size, inside the camera housing.
+    /// So this waits for things to settle and rebuilds only if a notch actually changed.
+    func screensChanged() {
+        rebuildTask?.cancel()
+        rebuildTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled, let self else { return }
+            // A screen with a notch that now reads as having none is most likely mid-switch;
+            // believe it only if it still does a little later.
+            let hadNotch = Set(panels.filter(\.geometry.hasNotch).compactMap(\.displayUUID))
+            if NSScreen.screens.contains(where: { screen in
+                screen.displayUUID.map(hadNotch.contains) == true && !NotchGeometry(screen: screen).hasNotch
+            }) {
+                Self.logger.debug("a notch went missing; checking again")
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+            }
+            let current = panels.map { "\($0.displayUUID ?? "?") \($0.geometry)" }
+            let fresh = shownScreens.map { "\($0.screen.displayUUID ?? "?") \($0.geometry)" }
+            guard current != fresh else { return Self.logger.debug("screens changed, notches didn't") }
+            Self.logger.debug("screens changed: rebuilding")
+            rebuildPanels()
+        }
+    }
+
+    /// The screens that get a notch, with its geometry.
+    private var shownScreens: [(screen: NSScreen, geometry: NotchGeometry)] {
+        NSScreen.screens.compactMap { screen in
+            let geometry = NotchGeometry(screen: screen)
+            return geometry.hasNotch || prefs.showOnExternalDisplays ? (screen, geometry) : nil
+        }
+    }
+
     func rebuildPanels() {
+        rebuildTask?.cancel()
         panels.forEach { $0.close() }
         if pinsPanels && pinnedSpace == nil { pinnedSpace = NotchSpace() }
         let space = pinsPanels ? pinnedSpace : nil
-        panels = NSScreen.screens.compactMap { screen in
-            let geometry = NotchGeometry(screen: screen)
-            guard geometry.hasNotch || prefs.showOnExternalDisplays else { return nil }
-            return NotchPanelController(geometry: geometry, displayUUID: screen.displayUUID, pinnedTo: space,
-                                        model: model, prefs: prefs, actions: actions)
+        panels = shownScreens.map { screen, geometry in
+            NotchPanelController(geometry: geometry, displayUUID: screen.displayUUID, pinnedTo: space,
+                                 model: model, prefs: prefs, actions: actions)
         }
-        updateVisibility()
+        // Mid-swipe, the new panels wait to appear with the swipe's animation.
+        updateVisibility(afterSwitch: isSwiping)
     }
 
     func setVisible(_ visible: Bool) {
@@ -288,6 +338,7 @@ final class NotchController {
 @MainActor
 private final class NotchPanelController {
     let displayUUID: String?
+    var geometry: NotchGeometry { state.geometry }
     private let panel: NotchPanel
     /// The camera-area target, with "Only open from the camera" on a notched screen.
     private let hotspot: NotchHotspot?
@@ -308,7 +359,16 @@ private final class NotchPanelController {
     private var isHiddenForSwipe = false
     /// The animation to start once the panel is actually on screen (see `animateIn`).
     private var pendingSlide: (() -> Void)?
+    /// Whether the view has applied the pending animation's starting point.
+    private var isAppearStartApplied = false
+    /// While "Appear on the new desktop" plays; each appear gets a new generation, so an
+    /// earlier one finishing doesn't count.
+    private var isAppearing = false
+    private var appearGeneration = 0
+    /// A new track arrived mid-switch; its peek shows once the notch has settled.
+    private var peekWaiting = false
     private var occlusionObserver: NSObjectProtocol?
+    private var slideStartTask: Task<Void, Never>?
     private var slideFallbackTask: Task<Void, Never>?
 
     /// "Hidden" opacity. Not quite 0, so macOS keeps treating the window as on screen.
@@ -340,6 +400,7 @@ private final class NotchPanelController {
         state.onTap = { [weak self] in self?.tapped() }
         state.onScrubEnded = { [weak self] in self?.scrubEnded() }
         state.onSearch = { [weak self] event in self?.handleSearch(event) }
+        state.onAppearStartApplied = { [weak self] start in self?.appearStartApplied(start) }
         // Clicking into another app while searching closes the search.
         resignKeyObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
@@ -406,6 +467,8 @@ private final class NotchPanelController {
             if case .animated(let direction) = appearance { appear(direction: direction) }
         } else {
             isHiddenForSwipe = false
+            isAppearing = false
+            peekWaiting = false
             hotspot?.orderOut(nil)
             hoverTask?.cancel()
             trackPeekTask?.cancel()
@@ -431,6 +494,7 @@ private final class NotchPanelController {
             hotspot.orderOut(nil)
             hotspot.close()
         }
+        slideStartTask?.cancel()
         slideFallbackTask?.cancel()
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         space?.remove(panel)
@@ -470,8 +534,11 @@ private final class NotchPanelController {
         let animation = prefs.effectiveSpaceSwitchAnimation
         guard animation != .none else {
             panel.alphaValue = 1
-            return
+            return appearSettled(appearGeneration)
         }
+        appearGeneration += 1
+        isAppearing = true
+        let generation = appearGeneration
         // Slide without a known direction falls back to the plain fade.
         let motion = animation.motion(direction: direction, geometry: state.geometry)
         Self.logger.debug("""
@@ -482,19 +549,31 @@ private final class NotchPanelController {
         if let motion {
             // The fade starts with the motion, which may wait for the window to be on screen;
             // fading in first would show the notch at its starting point, waiting.
-            animateIn(from: motion.start, curve: motion.curve)
+            animateIn(from: motion.start, curve: motion.curve, generation: generation)
         } else {
-            fadeIn(duration: 0.3)
+            fadeIn(duration: 0.3) { [weak self] in self?.appearSettled(generation) }
         }
+    }
+
+    /// The appear animation `generation` finished: a new track's peek that waited for it
+    /// shows now.
+    private func appearSettled(_ generation: Int) {
+        guard generation == appearGeneration else { return }
+        isAppearing = false
+        guard peekWaiting else { return }
+        peekWaiting = false
+        showTrackPeek()
     }
 
     /// The whole notch fades in, so its black shape emerges with the artwork instead of
     /// popping in under it. The window server runs the fade; the app does no per-frame work.
-    private func fadeIn(duration: TimeInterval) {
+    private func fadeIn(duration: TimeInterval, completion: (@MainActor () -> Void)? = nil) {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = duration
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
+        } completionHandler: {
+            MainActor.assumeIsolated { completion?() }
         }
     }
 
@@ -505,6 +584,7 @@ private final class NotchPanelController {
         isHiddenForSwipe = true
         hoverTask?.cancel()
         trackPeekTask?.cancel()
+        cancelPendingSlide()
         let wasOpen = isOpen
         NSAnimationContext.runAnimationGroup { context in
             context.duration = wasOpen ? 0.18 : 0.12
@@ -518,64 +598,88 @@ private final class NotchPanelController {
         }
     }
 
-    /// Moves the notch from `start` back to rest with `curve` (a slide, zoom, bounce or blur).
+    /// Moves the notch from `start` back to rest with `curve` (a slide, zoom, bounce, blur or
+    /// expand).
     ///
-    /// macOS pauses SwiftUI animations in windows that are off screen, and a window that has
-    /// just moved desktops still counts as off screen for a moment. An animation started then
-    /// would play unseen and show up finished or half-way. So the notch is put at its start
-    /// straight away, and the animation only starts once the window is on screen.
-    private func animateIn(from start: AppearStart, curve: Animation) {
+    /// The animation only starts once the notch is at its starting point on screen; started
+    /// any sooner, it would show up finished or half-way. That takes two things:
+    /// - The view has applied the starting point. It usually has within a millisecond, but
+    ///   during quick swipes between desktops it can take longer, and SwiftUI then merges the
+    ///   two changes, so nothing moves. So the view reports when it has.
+    /// - The window is on screen. macOS pauses SwiftUI animations in windows that are off
+    ///   screen, and a window that has just moved desktops still counts as off screen for a
+    ///   moment.
+    private func animateIn(from start: AppearStart, curve: Animation, generation: Int) {
         // Room around the closed notch, so a bounce or zoom isn't cut off by the window edges.
         let bar = closedSize
         setWindowSize(CGSize(width: bar.width + 2 * Self.overshootMargin, height: bar.height + Self.overshootMargin))
-        var noAnimation = Transaction()
-        noAnimation.disablesAnimations = true
-        withTransaction(noAnimation) {
-            state.contentOffset = start.contentOffset
-            state.appearScale = start.scale
-            state.appearContentBlur = start.contentBlur
-        }
-        panel.contentView?.layoutSubtreeIfNeeded()
-
         pendingSlide = { [weak self] in
-            self?.fadeIn(duration: 0.18)
+            if start.fades {
+                self?.fadeIn(duration: 0.18)
+            } else {
+                self?.panel.alphaValue = 1
+            }
             withAnimation(curve) {
                 self?.state.contentOffset = 0
                 self?.state.appearScale = 1
                 self?.state.appearContentBlur = 0
+                self?.state.appearGrowth = 1
             } completion: {
-                guard let self, !self.isOpen else { return }
+                guard let self else { return }
+                self.appearSettled(generation)
+                guard !self.isOpen else { return }
                 self.setWindowSize(self.closedSize)
             }
         }
-        if panel.occlusionState.contains(.visible) {
-            startPendingSlideAfterAFrame(reason: "already on screen")
-            return
-        }
-        if occlusionObserver == nil {
-            occlusionObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didChangeOcclusionStateNotification, object: panel, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self, self.panel.occlusionState.contains(.visible) else { return }
-                    self.startPendingSlideAfterAFrame(reason: "came on screen")
-                }
-            }
-        }
-        // Don't leave the content parked off to the side if no notification comes.
+        isAppearStartApplied = false
+        // Don't leave the notch hidden at its starting point if the wait never ends.
+        slideStartTask?.cancel()
         slideFallbackTask?.cancel()
         slideFallbackTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             self?.startPendingSlide(reason: "fallback timeout")
         }
+        if occlusionObserver == nil {
+            occlusionObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification, object: panel, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.startPendingSlideIfReady(reason: "came on screen")
+                }
+            }
+        }
+
+        var noAnimation = Transaction()
+        noAnimation.disablesAnimations = true
+        withTransaction(noAnimation) {
+            state.contentOffset = start.contentOffset
+            state.appearScale = start.scale
+            state.appearContentBlur = start.contentBlur
+            state.appearGrowth = start.growth
+            state.appearStart += 1
+        }
+        panel.contentView?.layoutSubtreeIfNeeded()
+        startPendingSlideIfReady(reason: "already on screen")
     }
 
-    /// Waits one display frame so the starting offset is drawn before the slide begins;
-    /// otherwise SwiftUI can merge the two changes and nothing slides.
+    /// The view has applied the starting point `start`.
+    private func appearStartApplied(_ start: Int) {
+        guard start == state.appearStart, pendingSlide != nil, !isAppearStartApplied else { return }
+        isAppearStartApplied = true
+        startPendingSlideIfReady(reason: "start applied")
+    }
+
+    /// Starts the pending animation if the notch is at its starting point on screen.
+    private func startPendingSlideIfReady(reason: String) {
+        guard pendingSlide != nil, isAppearStartApplied, panel.occlusionState.contains(.visible) else { return }
+        startPendingSlideAfterAFrame(reason: reason)
+    }
+
+    /// Waits one display frame so the starting point is drawn before the animation begins.
     private func startPendingSlideAfterAFrame(reason: String) {
-        slideFallbackTask?.cancel()
-        slideFallbackTask = Task { [weak self] in
+        slideStartTask?.cancel()
+        slideStartTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(20))
             guard !Task.isCancelled else { return }
             self?.startPendingSlide(reason: reason)
@@ -583,11 +687,19 @@ private final class NotchPanelController {
     }
 
     private func startPendingSlide(reason: String) {
+        slideStartTask?.cancel()
         slideFallbackTask?.cancel()
         guard let slide = pendingSlide else { return }
         pendingSlide = nil
         Self.logger.debug("slide started: \(reason, privacy: .public)")
         slide()
+    }
+
+    /// Drops an animation still waiting to start: the notch is hiding again.
+    private func cancelPendingSlide() {
+        slideStartTask?.cancel()
+        slideFallbackTask?.cancel()
+        pendingSlide = nil
     }
 
     private var isOpen: Bool { state.isExpanded || state.isPeeking }
@@ -627,20 +739,25 @@ private final class NotchPanelController {
     }
 
     func showTrackPeek(stayOpen: Bool = false) {
-        guard isShown, prefs.showTrackPeek || stayOpen, !isOpen, !isHiddenForSwipe else { return }
+        guard isShown, prefs.showTrackPeek || stayOpen, !isOpen else { return }
+        // Mid-switch it would cut into "Appear on the new desktop"; wait for the notch to settle.
+        if isHiddenForSwipe || isAppearing {
+            peekWaiting = true
+            return
+        }
         let size = state.geometry.trackPeekSize
         state.expandedSize = size
         state.expandedBodyWidth = size.width
         state.isTrackPeek = true
         setWindowSize(CGSize(width: size.width + 2 * Self.overshootMargin, height: size.height + Self.overshootMargin))
-        withAnimation(prefs.effectiveOpenAnimation.opening) { state.isExpanded = true }
+        withAnimation(prefs.effectiveOpenAnimation.trackPeekOpening) { state.isExpanded = true }
         updateMouseHandling()
         trackPeekTask?.cancel()
         guard !stayOpen else { return }
         trackPeekTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(2.5))
             guard !Task.isCancelled, let self, self.state.isTrackPeek else { return }
-            self.collapse()
+            self.collapse(gently: true)
         }
     }
 
@@ -789,7 +906,8 @@ private final class NotchPanelController {
         updateMouseHandling()
     }
 
-    private func collapse() {
+    /// `gently`: the slower close of a new track's peek.
+    private func collapse(gently: Bool = false) {
         keyboardCloseTask?.cancel()
         searchTask?.cancel()
         relinquishKey()
@@ -797,7 +915,8 @@ private final class NotchPanelController {
             guard let self, !self.isOpen else { return }
             self.setWindowSize(self.closedSize)
         }
-        if let closing = prefs.effectiveOpenAnimation.closing {
+        let animation = prefs.effectiveOpenAnimation
+        if let closing = gently ? animation.trackPeekClosing : animation.closing {
             withAnimation(closing) {
                 state.isExpanded = false
                 state.isPeeking = false
@@ -984,3 +1103,4 @@ private final class NotchPanelController {
         panel.displayIfNeeded()
     }
 }
+
