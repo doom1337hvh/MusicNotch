@@ -609,10 +609,12 @@ private final class NotchPanelController {
     /// - The window is on screen. macOS pauses SwiftUI animations in windows that are off
     ///   screen, and a window that has just moved desktops still counts as off screen for a
     ///   moment.
+    ///
+    /// The window keeps its size unless the animation springs past the notch's full size.
+    /// Mid-switch, macOS can apply a new window size but keep showing the old contents until
+    /// the switch ends, pinned to the window's bottom left: the notch would show up below and
+    /// left of the housing, standing still.
     private func animateIn(from start: AppearStart, curve: Animation, generation: Int) {
-        // Room around the closed notch, so a bounce or zoom isn't cut off by the window edges.
-        let bar = closedSize
-        setWindowSize(CGSize(width: bar.width + 2 * Self.overshootMargin, height: bar.height + Self.overshootMargin))
         pendingSlide = { [weak self] in
             if start.fades {
                 self?.fadeIn(duration: 0.18)
@@ -627,7 +629,7 @@ private final class NotchPanelController {
             } completion: {
                 guard let self else { return }
                 self.appearSettled(generation)
-                guard !self.isOpen else { return }
+                guard !self.isOpen, self.panel.frame.size != self.closedSize else { return }
                 self.setWindowSize(self.closedSize)
             }
         }
@@ -659,7 +661,13 @@ private final class NotchPanelController {
             state.appearGrowth = start.growth
             state.appearStart += 1
         }
-        panel.contentView?.layoutSubtreeIfNeeded()
+        if start.overshoots {
+            // Room around the closed notch, so a bounce isn't cut off by the window edges.
+            let bar = closedSize
+            setWindowSize(CGSize(width: bar.width + 2 * Self.overshootMargin, height: bar.height + Self.overshootMargin))
+        } else {
+            panel.contentView?.layoutSubtreeIfNeeded()
+        }
         startPendingSlideIfReady(reason: "already on screen")
     }
 

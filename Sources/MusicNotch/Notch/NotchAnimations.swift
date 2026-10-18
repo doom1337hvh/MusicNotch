@@ -74,6 +74,8 @@ struct AppearStart {
     /// Whether the notch fades in as well. Growing out of the housing starts out of sight
     /// anyway, so it doesn't.
     var fades = true
+    /// Whether the notch springs past its full size on the way, and so needs room around it.
+    var overshoots = false
 }
 
 extension SpaceSwitchAnimation {
@@ -89,7 +91,7 @@ extension SpaceSwitchAnimation {
         case .zoom:
             return (AppearStart(scale: 0.5), .smooth(duration: 0.35))
         case .bounce:
-            return (AppearStart(scale: 0.7), .spring(response: 0.42, dampingFraction: 0.6))
+            return (AppearStart(scale: 0.7, overshoots: true), .spring(response: 0.42, dampingFraction: 0.6))
         case .blur:
             return (AppearStart(contentBlur: 12), .smooth(duration: 0.4))
         case .expand:

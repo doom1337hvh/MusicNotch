@@ -14,10 +14,11 @@ struct NotchRootView: View {
         // without a notch, an invisible target) until it opens.
         let hidesClosed = !prefs.showBesideNotch && !expanded && !peeking
         let closed = geometry.closedSize(showsContent: prefs.showBesideNotch)
-        // Expand (switching desktops) grows the closed notch out from the housing's own width.
+        // Expand (switching desktops) grows the closed notch out from the housing's own width,
+        // stopping at its full width as the spring settles: the window has no room beyond it.
         let housingWidth = geometry.hasNotch ? geometry.notchWidth : 0
         let grownWidth = prefs.showBesideNotch
-            ? housingWidth + (closed.width - housingWidth) * state.appearGrowth : closed.width
+            ? housingWidth + (closed.width - housingWidth) * min(state.appearGrowth, 1) : closed.width
         let barSize = peeking ? geometry.peekSize : CGSize(width: grownWidth, height: closed.height)
         let size = expanded ? state.expandedSize : barSize
         let compact = state.expandedStyle == .compact || state.isTrackPeek
