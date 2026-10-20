@@ -192,15 +192,21 @@ final class NotchController {
     /// Brings the panels back as the desktop settles after the swipe is released. macOS only
     /// reports the switch once it has settled, which is noticeably later.
     ///
-    /// With "Hide in full screen" on and the swipe heading to a full-screen app's desktop, the
-    /// panels instead wait for that report, in case they should stay hidden there; otherwise
-    /// they'd flash up and vanish. A cancelled swipe never gets a report, so they give up
-    /// after 1.2 s.
+    /// The panels instead wait for that report:
+    /// - With "Hide in full screen" on and the swipe heading to a full-screen app's desktop, in
+    ///   case they should stay hidden there; otherwise they'd flash up and vanish.
+    /// - With an animation that moves the notch and the swipe heading to an ordinary desktop.
+    ///   Until the switch is over, macOS often keeps showing the notch's old frames there, so
+    ///   the animation would play unseen and the notch would show up already at rest.
+    ///
+    /// A cancelled swipe never gets a report, so they give up after 1.2 s.
     private func swipeEnded(direction: SpaceObserver.Direction?) {
         swipeEndTask?.cancel()
         isSwipeHeld = false
-        let waitForDestination = prefs.hideInFullScreen != .never
-            && direction.map(spaces.swipeLandsOnFullScreen) == true
+        let waitForDestination = direction.map { direction in
+            prefs.hideInFullScreen != .never && spaces.swipeLandsOnFullScreen(direction)
+                || prefs.effectiveSpaceSwitchAnimation.moves && spaces.swipeLandsOnDesktop(direction)
+        } == true
         swipeEndTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(waitForDestination ? 1200 : 400))
             guard !Task.isCancelled else { return }

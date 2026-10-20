@@ -37,9 +37,18 @@ final class SpaceObserver {
 
     /// Whether a swipe in `direction` lands on a full-screen app's desktop, on any display.
     func swipeLandsOnFullScreen(_ direction: Direction) -> Bool {
+        swipeLands(direction) { $0 == Self.fullScreenType }
+    }
+
+    /// Whether a swipe in `direction` lands on an ordinary desktop, on any display.
+    func swipeLandsOnDesktop(_ direction: Direction) -> Bool {
+        swipeLands(direction) { $0 != Self.fullScreenType }
+    }
+
+    private func swipeLands(_ direction: Direction, on type: (Int) -> Bool) -> Bool {
         Self.readCurrentSpaces().values.contains { space in
             let target = space.index + (direction == .forward ? 1 : -1)
-            return space.types.indices.contains(target) && space.types[target] == Self.fullScreenType
+            return space.types.indices.contains(target) && type(space.types[target])
         }
     }
 

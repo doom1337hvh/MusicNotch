@@ -59,6 +59,14 @@ enum SpaceSwitchAnimation: Int, CaseIterable, Identifiable {
         case .none: "None"
         }
     }
+
+    /// Whether it moves, scales or blurs the notch, rather than only fading the window in.
+    var moves: Bool {
+        switch self {
+        case .fade, .none: false
+        case .slide, .expand, .zoom, .bounce, .blur: true
+        }
+    }
 }
 
 /// When the notch steps aside for a full-screen app.
