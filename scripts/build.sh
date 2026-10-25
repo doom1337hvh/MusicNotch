@@ -88,6 +88,8 @@ cp "$ADAPTER_SRC/bin/mediaremote-adapter.pl" "$APP/Contents/Resources/"
 cp "$ROOT/Adapter/musicnotch-adapter.pl" "$APP/Contents/Resources/"
 cp "$ADAPTER_SRC/LICENSE" "$APP/Contents/Resources/mediaremote-adapter-LICENSE.txt"
 cp -R "$FRAMEWORK" "$APP/Contents/Frameworks/"
+# Folders synced by iCloud Drive tag files with Finder info, which codesign refuses.
+xattr -cr "$APP"
 
 step "Signing"
 # The adapter framework is loaded by /usr/bin/perl and is fine signed ad hoc.

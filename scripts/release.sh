@@ -24,9 +24,18 @@ step() { printf '\n==> %s\n' "$1"; }
 
 "$ROOT/scripts/build.sh"
 
+# A clean copy is checked and packaged. ditto keeps the framework's symlinks and the
+# signature intact, and leaves out the local file attributes macOS adds (provenance, and the
+# Finder info iCloud Drive keeps putting back in synced folders), which the signature
+# doesn't cover but `codesign --strict` refuses.
+CLEAN=(--norsrc --noextattr --noqtn --noacl)
+STAGING="$(mktemp -d)"
+trap 'rm -rf "$STAGING"' EXIT
+ditto "${CLEAN[@]}" "$APP" "$STAGING/MusicNotch.app"
+
 step "Checking the signature"
-codesign --verify --deep --strict "$APP"
-DETAILS="$(codesign -dvv "$APP" 2>&1)"
+codesign --verify --deep --strict "$STAGING/MusicNotch.app"
+DETAILS="$(codesign -dvv "$STAGING/MusicNotch.app" 2>&1)"
 AUTHORITY="$(awk -F= '/^Authority=/ {print $2; exit}' <<<"$DETAILS")"
 if [ "$AUTHORITY" != "MusicNotch Local Signing" ] && [ "${ALLOW_ADHOC:-}" != "1" ]; then
   echo "The app isn't signed with \"MusicNotch Local Signing\" (got: ${AUTHORITY:-ad hoc})."
@@ -39,14 +48,8 @@ echo "Signed by $AUTHORITY"
 step "Packaging $NAME"
 rm -rf "$DIST"
 mkdir -p "$DIST"
-# ditto keeps the framework's symlinks and the signature intact. The local file attributes
-# macOS adds (provenance and the like) are left out; the signature doesn't cover them.
-CLEAN=(--norsrc --noextattr --noqtn --noacl)
-ditto -c -k "${CLEAN[@]}" --keepParent "$APP" "$DIST/$NAME.zip"
+ditto -c -k "${CLEAN[@]}" --keepParent "$STAGING/MusicNotch.app" "$DIST/$NAME.zip"
 
-STAGING="$(mktemp -d)"
-trap 'rm -rf "$STAGING"' EXIT
-ditto "${CLEAN[@]}" "$APP" "$STAGING/MusicNotch.app"
 ln -s /Applications "$STAGING/Applications"
 hdiutil create -quiet -volname "MusicNotch $VERSION" -srcfolder "$STAGING" -fs HFS+ \
   -format UDZO -ov "$DIST/$NAME.dmg"
