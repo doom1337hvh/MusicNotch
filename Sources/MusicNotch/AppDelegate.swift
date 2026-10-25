@@ -91,6 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             adapter.start(options: prefs.adapterOptions)
         }
         prefs.onDisplayOptionsChange = { [weak notch] in notch?.rebuildPanels() }
+        prefs.onNotchHiddenChange = { [weak notch] in notch?.notchHiddenChanged() }
         prefs.onMenuBarIconChange = { [weak self] in self?.updateStatusItem() }
         prefs.onSwipeOptionChange = { [weak notch] in notch?.updateSwipeMonitoring() }
         prefs.onFullScreenOptionChange = { [weak notch] in notch?.updateVisibility() }
@@ -407,6 +408,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(warning)
             menu.addItem(.separator())
         }
+        let hideItem = NSMenuItem(title: "Hide Notch", action: #selector(toggleNotchHidden), keyEquivalent: "")
+        hideItem.target = self
+        hideItem.state = prefs.isNotchHidden ? .on : .off
+        menu.addItem(hideItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -414,6 +419,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let quitItem = NSMenuItem(title: "Quit MusicNotch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quitItem.target = NSApp
         menu.addItem(quitItem)
+    }
+
+    @objc private func toggleNotchHidden() {
+        prefs.isNotchHidden.toggle()
     }
 
     @objc private func showSettings() {

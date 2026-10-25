@@ -134,6 +134,8 @@ Keyboard shortcuts use macOS's standard hotkey system and need no permission.
 
 Open Settings from the ♪ menu bar icon, by right-clicking the notch, or by opening MusicNotch again while it's running (useful if you've hidden the menu bar icon).
 
+To get the notch out of the way quickly, right-click it (or click ♪) and choose **Hide Notch**. Nothing shows beside the camera then, not even new songs, until you hover over the camera; choose it again to bring the notch back.
+
 <details>
 <summary><b>See the Settings window</b></summary>
 <p align="center"><img src="docs/clips/settings.gif" width="440" alt="The Settings window, clicking through its Notch, Appearance, Animations, Performance and About tabs"></p>

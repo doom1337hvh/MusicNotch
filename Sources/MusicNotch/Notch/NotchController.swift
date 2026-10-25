@@ -270,6 +270,11 @@ final class NotchController {
         updateVisibility(afterSwitch: isSwiping)
     }
 
+    /// "Hide" on the notch: a closed notch takes its new size now, an open one as it closes.
+    func notchHiddenChanged() {
+        panels.forEach { $0.fitClosedSize() }
+    }
+
     func setVisible(_ visible: Bool) {
         isVisible = visible
         updateVisibility()
@@ -389,7 +394,7 @@ private final class NotchPanelController {
         self.prefs = prefs
         self.actions = actions
         state = NotchState(geometry: geometry)
-        panel = NotchPanel(frame: geometry.frame(for: geometry.closedSize(showsContent: prefs.showBesideNotch)),
+        panel = NotchPanel(frame: geometry.frame(for: geometry.closedSize(showsContent: prefs.effectiveShowBesideNotch)),
                            pinned: space != nil)
         // A few points inside the camera housing on each side and at the bottom.
         hotspot = prefs.openFromCameraOnly && geometry.hasNotch
@@ -718,9 +723,14 @@ private final class NotchPanelController {
 
     private var isOpen: Bool { state.isExpanded || state.isPeeking }
 
+    func fitClosedSize() {
+        guard !isOpen, !isAppearing, panel.frame.size != closedSize else { return }
+        setWindowSize(closedSize)
+    }
+
     /// The closed notch's size; see `NotchGeometry.closedSize`.
     private var closedSize: CGSize {
-        state.geometry.closedSize(showsContent: prefs.showBesideNotch)
+        state.geometry.closedSize(showsContent: prefs.effectiveShowBesideNotch)
     }
 
     private func collapseImmediately() {
@@ -753,7 +763,7 @@ private final class NotchPanelController {
     }
 
     func showTrackPeek(stayOpen: Bool = false) {
-        guard isShown, prefs.showTrackPeek || stayOpen, !isOpen else { return }
+        guard isShown, prefs.effectiveShowTrackPeek || stayOpen, !isOpen else { return }
         // Mid-switch it would cut into "Appear on the new desktop"; wait for the notch to settle.
         if isHiddenForSwipe || isAppearing {
             peekWaiting = true

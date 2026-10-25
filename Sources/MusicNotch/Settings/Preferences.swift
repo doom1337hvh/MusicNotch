@@ -170,6 +170,7 @@ final class Preferences {
         static let theme = "notchTheme"
         static let showTrackPeek = "showTrackPeek"
         static let showBesideNotch = "showBesideNotch"
+        static let notchHidden = "notchHidden"
         static let showShuffleRepeat = "showShuffleRepeat"
         static let showSearch = "showSearch"
         static let showSoundApps = "showSoundApps"
@@ -195,6 +196,8 @@ final class Preferences {
 
     @ObservationIgnored var onAdapterOptionsChange: (() -> Void)?
     @ObservationIgnored var onDisplayOptionsChange: (() -> Void)?
+    /// Unlike the display options, this one is set from the notch itself, so the panels stay.
+    @ObservationIgnored var onNotchHiddenChange: (() -> Void)?
     @ObservationIgnored var onMenuBarIconChange: (() -> Void)?
     @ObservationIgnored var onSwipeOptionChange: (() -> Void)?
     @ObservationIgnored var onFullScreenOptionChange: (() -> Void)?
@@ -226,6 +229,14 @@ final class Preferences {
     /// Briefly opens the notch to show a new track when the song changes.
     var showTrackPeek: Bool {
         didSet { defaults.set(showTrackPeek, forKey: Key.showTrackPeek) }
+    }
+    /// Hidden from the notch's right-click menu: nothing shows beside the camera housing, not even
+    /// a new track, until the notch is hovered over. Overrides the two settings above.
+    var isNotchHidden: Bool {
+        didSet {
+            defaults.set(isNotchHidden, forKey: Key.notchHidden)
+            onNotchHiddenChange?()
+        }
     }
     /// Shuffle and repeat buttons in the open panel, for apps that support them (Spotify, Music).
     var showShuffleRepeat: Bool {
@@ -342,6 +353,7 @@ final class Preferences {
         theme = (defaults.object(forKey: Key.theme) as? Int).flatMap(NotchTheme.init(rawValue:)) ?? .glass
         showTrackPeek = bool(Key.showTrackPeek, true)
         showBesideNotch = bool(Key.showBesideNotch, true)
+        isNotchHidden = bool(Key.notchHidden, false)
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
         showSearch = bool(Key.showSearch, true)
         showSoundApps = bool(Key.showSoundApps, true)
@@ -435,6 +447,8 @@ final class Preferences {
     /// Glass makes the window server blur what's behind the open notch, so low-resource
     /// mode keeps it black.
     var effectiveTheme: NotchTheme { isLowResource ? .black : theme }
+    var effectiveShowBesideNotch: Bool { showBesideNotch && !isNotchHidden }
+    var effectiveShowTrackPeek: Bool { showTrackPeek && !isNotchHidden }
     var effectiveArtwork: Bool { showArtwork && !isLowResource }
     var effectiveProgressBar: Bool { showProgressBar && !isLowResource }
     var effectiveOpenAnimation: OpenAnimation { isLowResource ? .instant : openAnimation }
