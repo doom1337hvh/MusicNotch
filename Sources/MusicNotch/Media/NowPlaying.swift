@@ -150,6 +150,9 @@ final class NowPlaying {
     @ObservationIgnored var onPresenceChange: ((Bool) -> Void)?
     /// Called when the displayed track changes, not when media first appears.
     @ObservationIgnored var onTrackChange: (() -> Void)?
+    /// Called when some app starts playing sound (`true`), or the last one stops (`false`).
+    @ObservationIgnored var onPlayingChange: ((Bool) -> Void)?
+    @ObservationIgnored private(set) var isPlayingAnything = false
     /// The displayed session and track, to notice track changes.
     @ObservationIgnored private var lastTrack: [String?]?
     @ObservationIgnored private var hideTask: Task<Void, Never>?
@@ -279,6 +282,12 @@ final class NowPlaying {
             }
         }
         if all != sessions { sessions = all }
+        // Before `select`, so a notch put away while nothing played is back for a new track.
+        let playing = sessions.contains(where: \.snapshot.isPlaying)
+        if playing != isPlayingAnything {
+            isPlayingAnything = playing
+            onPlayingChange?(playing)
+        }
         select()
 
         if sessions.isEmpty {

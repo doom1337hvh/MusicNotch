@@ -92,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         prefs.onDisplayOptionsChange = { [weak notch] in notch?.rebuildPanels() }
         prefs.onNotchHiddenChange = { [weak notch] in notch?.notchHiddenChanged() }
+        prefs.onIdleOptionsChange = { [weak notch] in notch?.idleOptionsChanged() }
+        model.onPlayingChange = { [weak notch] playing in notch?.playingChanged(playing) }
+        notch.playingChanged(model.isPlayingAnything)
         prefs.onMenuBarIconChange = { [weak self] in self?.updateStatusItem() }
         prefs.onSwipeOptionChange = { [weak notch] in notch?.updateSwipeMonitoring() }
         prefs.onFullScreenOptionChange = { [weak notch] in notch?.updateVisibility() }

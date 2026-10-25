@@ -93,6 +93,11 @@ final class NotchController {
     private var panels: [NotchPanelController] = []
     private var isVisible = false
     private var isScreenLocked = false
+    /// "When nothing plays": whether something is playing sound, and the wait before the
+    /// notch tucks in or goes (see `restartIdleTimer`).
+    private var isPlaying = false
+    private var idleTask: Task<Void, Never>?
+    private var isIdleRemoved = false
     private let spaces = SpaceObserver()
     private let swipes = SwipeMonitor()
     private var swipeEndTask: Task<Void, Never>?
@@ -275,6 +280,54 @@ final class NotchController {
         panels.forEach { $0.fitClosedSize() }
     }
 
+    /// Some app started playing sound, or the last one stopped.
+    func playingChanged(_ playing: Bool) {
+        isPlaying = playing
+        restartIdleTimer()
+    }
+
+    /// "When nothing plays" changed: it starts counting again.
+    func idleOptionsChanged() {
+        restartIdleTimer()
+    }
+
+    /// Brings the notch back, then, while nothing plays, waits the chosen time before tucking
+    /// it behind the camera or removing it.
+    private func restartIdleTimer() {
+        idleTask?.cancel()
+        idleTask = nil
+        setIdle(false)
+        guard !isPlaying, prefs.idleHiding != .never else { return }
+        let wait = Double(prefs.idleMinutes) * 60
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            self?.setIdle(true)
+        }
+    }
+
+    private func setIdle(_ idle: Bool) {
+        let tuck = idle && prefs.idleHiding == .tuck
+        if tuck != prefs.isIdleTucked {
+            if tuck {
+                // The artwork and bars slide in behind the housing, then the window fits.
+                withAnimation(.smooth(duration: 0.4)) { prefs.isIdleTucked = true } completion: { [weak self] in
+                    self?.panels.forEach { $0.fitClosedSize() }
+                }
+            } else {
+                let showsContent = prefs.showBesideNotch && !prefs.isNotchHidden
+                panels.forEach { $0.fitClosedSize(showsContent: showsContent) }
+                withAnimation(.smooth(duration: 0.4)) { prefs.isIdleTucked = false }
+            }
+        }
+        let remove = idle && prefs.idleHiding == .remove
+        if remove != isIdleRemoved {
+            isIdleRemoved = remove
+            // Coming back plays "Appear on the new desktop".
+            updateVisibility(afterSwitch: !remove)
+        }
+    }
+
     func setVisible(_ visible: Bool) {
         isVisible = visible
         updateVisibility()
@@ -317,7 +370,8 @@ final class NotchController {
         let appearance: NotchPanelController.Appearance = !afterSwitch ? .immediately
             : isSwiping ? .afterSwipe : .animated(direction)
         for panel in panels {
-            panel.setVisible(isVisible && !isScreenLocked && !hidesForFullScreen(panel), appearance: appearance)
+            panel.setVisible(isVisible && !isScreenLocked && !isIdleRemoved && !hidesForFullScreen(panel),
+                             appearance: appearance)
         }
     }
 
@@ -724,8 +778,14 @@ private final class NotchPanelController {
     private var isOpen: Bool { state.isExpanded || state.isPeeking }
 
     func fitClosedSize() {
-        guard !isOpen, !isAppearing, panel.frame.size != closedSize else { return }
-        setWindowSize(closedSize)
+        fitClosedSize(showsContent: prefs.effectiveShowBesideNotch)
+    }
+
+    /// Sizes a closed notch's window for showing the artwork and bars, or not.
+    func fitClosedSize(showsContent: Bool) {
+        let size = state.geometry.closedSize(showsContent: showsContent)
+        guard !isOpen, !isAppearing, panel.frame.size != size else { return }
+        setWindowSize(size)
     }
 
     /// The closed notch's size; see `NotchGeometry.closedSize`.

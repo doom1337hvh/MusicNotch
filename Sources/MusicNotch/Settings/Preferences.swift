@@ -70,6 +70,25 @@ enum SpaceSwitchAnimation: Int, CaseIterable, Identifiable {
 }
 
 /// When the notch steps aside for a full-screen app.
+/// "When nothing plays": what happens to the notch once no app has played sound for a while.
+enum IdleHiding: Int, CaseIterable, Identifiable {
+    case never = 0
+    /// Nothing beside the camera housing until it's hovered over, as with Hide Notch.
+    case tuck = 1
+    /// No notch at all.
+    case remove = 2
+
+    var id: Int { rawValue }
+
+    var label: String {
+        switch self {
+        case .never: "Keep showing"
+        case .tuck: "Tuck behind the camera"
+        case .remove: "Remove the notch"
+        }
+    }
+}
+
 enum FullScreenHiding: Int, CaseIterable, Identifiable {
     case never = 0
     /// Only when the app playing media is the full-screen one, like a video.
@@ -171,6 +190,8 @@ final class Preferences {
         static let showTrackPeek = "showTrackPeek"
         static let showBesideNotch = "showBesideNotch"
         static let notchHidden = "notchHidden"
+        static let idleHiding = "idleHiding"
+        static let idleMinutes = "idleMinutes"
         static let showShuffleRepeat = "showShuffleRepeat"
         static let showSearch = "showSearch"
         static let showSoundApps = "showSoundApps"
@@ -198,6 +219,7 @@ final class Preferences {
     @ObservationIgnored var onDisplayOptionsChange: (() -> Void)?
     /// Unlike the display options, this one is set from the notch itself, so the panels stay.
     @ObservationIgnored var onNotchHiddenChange: (() -> Void)?
+    @ObservationIgnored var onIdleOptionsChange: (() -> Void)?
     @ObservationIgnored var onMenuBarIconChange: (() -> Void)?
     @ObservationIgnored var onSwipeOptionChange: (() -> Void)?
     @ObservationIgnored var onFullScreenOptionChange: (() -> Void)?
@@ -238,6 +260,22 @@ final class Preferences {
             onNotchHiddenChange?()
         }
     }
+    /// "When nothing plays", and after how many minutes.
+    var idleHiding: IdleHiding {
+        didSet {
+            defaults.set(idleHiding.rawValue, forKey: Key.idleHiding)
+            onIdleOptionsChange?()
+        }
+    }
+    var idleMinutes: Int {
+        didSet {
+            defaults.set(idleMinutes, forKey: Key.idleMinutes)
+            onIdleOptionsChange?()
+        }
+    }
+    static let idleMinuteChoices = [1, 2, 5, 10, 15, 30, 60]
+    /// Tucked behind the camera for now, because nothing has played for a while (not saved).
+    var isIdleTucked = false
     /// Shuffle and repeat buttons in the open panel, for apps that support them (Spotify, Music).
     var showShuffleRepeat: Bool {
         didSet { defaults.set(showShuffleRepeat, forKey: Key.showShuffleRepeat) }
@@ -354,6 +392,8 @@ final class Preferences {
         showTrackPeek = bool(Key.showTrackPeek, true)
         showBesideNotch = bool(Key.showBesideNotch, true)
         isNotchHidden = bool(Key.notchHidden, false)
+        idleHiding = (defaults.object(forKey: Key.idleHiding) as? Int).flatMap(IdleHiding.init(rawValue:)) ?? .never
+        idleMinutes = (defaults.object(forKey: Key.idleMinutes) as? Int) ?? 5
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
         showSearch = bool(Key.showSearch, true)
         showSoundApps = bool(Key.showSoundApps, true)
@@ -447,8 +487,8 @@ final class Preferences {
     /// Glass makes the window server blur what's behind the open notch, so low-resource
     /// mode keeps it black.
     var effectiveTheme: NotchTheme { isLowResource ? .black : theme }
-    var effectiveShowBesideNotch: Bool { showBesideNotch && !isNotchHidden }
-    var effectiveShowTrackPeek: Bool { showTrackPeek && !isNotchHidden }
+    var effectiveShowBesideNotch: Bool { showBesideNotch && !isNotchHidden && !isIdleTucked }
+    var effectiveShowTrackPeek: Bool { showTrackPeek && !isNotchHidden && !isIdleTucked }
     var effectiveArtwork: Bool { showArtwork && !isLowResource }
     var effectiveProgressBar: Bool { showProgressBar && !isLowResource }
     var effectiveOpenAnimation: OpenAnimation { isLowResource ? .instant : openAnimation }
