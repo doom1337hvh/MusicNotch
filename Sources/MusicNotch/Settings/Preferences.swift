@@ -70,25 +70,6 @@ enum SpaceSwitchAnimation: Int, CaseIterable, Identifiable {
 }
 
 /// When the notch steps aside for a full-screen app.
-/// "When nothing plays": what happens to the notch once no app has played sound for a while.
-enum IdleHiding: Int, CaseIterable, Identifiable {
-    case never = 0
-    /// Nothing beside the camera housing until it's hovered over, as with Hide Notch.
-    case tuck = 1
-    /// No notch at all.
-    case remove = 2
-
-    var id: Int { rawValue }
-
-    var label: String {
-        switch self {
-        case .never: "Keep showing"
-        case .tuck: "Tuck behind the camera"
-        case .remove: "Remove the notch"
-        }
-    }
-}
-
 enum FullScreenHiding: Int, CaseIterable, Identifiable {
     case never = 0
     /// Only when the app playing media is the full-screen one, like a video.
@@ -190,6 +171,8 @@ final class Preferences {
         static let showTrackPeek = "showTrackPeek"
         static let showBesideNotch = "showBesideNotch"
         static let notchHidden = "notchHidden"
+        static let tucksWhenIdle = "tuckWhenIdle"
+        /// Before 1.2.2: 0 never, 1 tuck, 2 remove.
         static let idleHiding = "idleHiding"
         static let idleMinutes = "idleMinutes"
         static let showShuffleRepeat = "showShuffleRepeat"
@@ -260,10 +243,10 @@ final class Preferences {
             onNotchHiddenChange?()
         }
     }
-    /// "When nothing plays", and after how many minutes.
-    var idleHiding: IdleHiding {
+    /// "Tuck away when nothing plays", and after how many minutes.
+    var tucksWhenIdle: Bool {
         didSet {
-            defaults.set(idleHiding.rawValue, forKey: Key.idleHiding)
+            defaults.set(tucksWhenIdle, forKey: Key.tucksWhenIdle)
             onIdleOptionsChange?()
         }
     }
@@ -275,6 +258,7 @@ final class Preferences {
     }
     static let idleMinuteChoices = [1, 2, 5, 10, 15, 30, 60]
     /// Tucked behind the camera for now, because nothing has played for a while (not saved).
+    /// The artwork and bars slide in behind the housing (see `NotchState.appearGrowth`).
     var isIdleTucked = false
     /// Shuffle and repeat buttons in the open panel, for apps that support them (Spotify, Music).
     var showShuffleRepeat: Bool {
@@ -392,7 +376,8 @@ final class Preferences {
         showTrackPeek = bool(Key.showTrackPeek, true)
         showBesideNotch = bool(Key.showBesideNotch, true)
         isNotchHidden = bool(Key.notchHidden, false)
-        idleHiding = (defaults.object(forKey: Key.idleHiding) as? Int).flatMap(IdleHiding.init(rawValue:)) ?? .never
+        tucksWhenIdle = defaults.object(forKey: Key.tucksWhenIdle) as? Bool
+            ?? ((defaults.object(forKey: Key.idleHiding) as? Int ?? 0) != 0)
         idleMinutes = (defaults.object(forKey: Key.idleMinutes) as? Int) ?? 5
         showShuffleRepeat = bool(Key.showShuffleRepeat, true)
         showSearch = bool(Key.showSearch, true)
@@ -487,7 +472,7 @@ final class Preferences {
     /// Glass makes the window server blur what's behind the open notch, so low-resource
     /// mode keeps it black.
     var effectiveTheme: NotchTheme { isLowResource ? .black : theme }
-    var effectiveShowBesideNotch: Bool { showBesideNotch && !isNotchHidden && !isIdleTucked }
+    var effectiveShowBesideNotch: Bool { showBesideNotch && !isNotchHidden }
     var effectiveShowTrackPeek: Bool { showTrackPeek && !isNotchHidden && !isIdleTucked }
     var effectiveArtwork: Bool { showArtwork && !isLowResource }
     var effectiveProgressBar: Bool { showProgressBar && !isLowResource }

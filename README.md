@@ -148,7 +148,7 @@ To get the notch out of the way quickly, right-click it (or click ♪) and choos
 **Notch.** *When closed*:
 - **Show artwork and bars beside the notch** (on by default): turn it off and nothing shows until you hover over the notch, so it looks like the plain camera housing.
 - **Show new tracks** (on by default): briefly shows the new song when the track changes.
-- **When nothing plays** (Keep showing by default): after 1 minute to 1 hour with no sound, tucks the artwork and bars behind the camera (hover over it to open the notch) or removes the notch, until something plays again.
+- **Tuck away when nothing plays** (off by default): after 1 minute to 1 hour with no sound, the artwork and bars slide in behind the camera (hover over it to open the notch) until something plays again.
 - **Show other apps playing sound** (on by default, macOS 14.2 or later): apps that play sound or use the microphone for more than a couple of seconds and aren't music players, like a call or a game, show with their icon and name. An app using the microphone is shown as in a call, and comes first, even over music; otherwise music comes first while it plays. Their panel has **Mute microphone**, which mutes your Mac's microphone for every app (the call app's own mute button doesn't change, and MusicNotch unmutes it when the call ends), **Deafen**, which silences just that app (and, for a call, mutes your microphone too, as call apps do; undeafening puts it back), and **Show app**. While one is shown, the play/pause and skip shortcuts still reach your music.
 
 *Opening*:

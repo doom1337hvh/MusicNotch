@@ -236,13 +236,11 @@ private struct NotchSettings: View {
                     Text("Show new tracks")
                     Text("When the song changes, the notch briefly opens to show it.")
                 }
-                Picker(selection: $prefs.idleHiding) {
-                    ForEach(IdleHiding.allCases) { Text($0.label).tag($0) }
-                } label: {
-                    Text("When nothing plays")
-                    Text("After a while with no sound, the artwork and bars tuck behind the camera (hover over it to open the notch), or the notch goes away. It comes back as soon as something plays.")
+                Toggle(isOn: $prefs.tucksWhenIdle) {
+                    Text("Tuck away when nothing plays")
+                    Text("After a while with no sound, the artwork and bars slide in behind the camera; hover over it to open the notch. They come back as soon as something plays.")
                 }
-                if prefs.idleHiding != .never {
+                if prefs.tucksWhenIdle {
                     Picker("After", selection: $prefs.idleMinutes) {
                         ForEach(Preferences.idleMinuteChoices, id: \.self) { minutes in
                             Text(minutes == 60 ? "1 hour" : minutes == 1 ? "1 minute" : "\(minutes) minutes").tag(minutes)
