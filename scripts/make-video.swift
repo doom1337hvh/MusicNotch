@@ -132,11 +132,11 @@ let scenes: [Scene] = [
                  (3.0, 60, 62), (3.9, 88, 62), (4.4, 88, 62), (5.4, 250, 120)],
           clicks: [2.8, 4.2]),
     Scene(name: "new-track", length: 4.6, height: 140),
-    // Toolbar items from the window's top left: General 48, Notch 104, Appearance 170,
-    // Animations 244, Shortcuts 311, Performance 383, About 452; y 50.
+    // Tabs from the window's top left: General 42, Notch 98, Appearance 166, Animations 242,
+    // Shortcuts 313, Performance 388, About 458; y 55.
     Scene(name: "settings", length: 8.4,
-          path: [(-1, 230, 300), (0.4, 230, 300), (1.0, 104, 50), (1.8, 104, 50), (2.4, 170, 50), (3.2, 170, 50),
-                 (3.8, 244, 50), (4.6, 244, 50), (5.2, 383, 50), (6.0, 383, 50), (6.6, 452, 50)],
+          path: [(-1, 230, 300), (0.4, 230, 300), (1.0, 98, 55), (1.8, 98, 55), (2.4, 166, 55), (3.2, 166, 55),
+                 (3.8, 242, 55), (4.6, 242, 55), (5.2, 388, 55), (6.0, 388, 55), (6.6, 458, 55)],
           clicks: [1.4, 2.8, 4.2, 5.6, 7.0], isSettings: true),
 ]
 

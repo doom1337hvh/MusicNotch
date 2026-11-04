@@ -1,7 +1,8 @@
 import AppKit
+import AppShell
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     private let prefs = Preferences()
     private let model = NowPlaying()
     private let adapter = AdapterProcess()
@@ -15,23 +16,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var mutedForDeafen = false
     private let hotkeys = HotkeyCenter()
     private var notch: NotchController?
-    private var statusItem: NSStatusItem?
     private var terminationSignal: DispatchSourceSignal?
-    private lazy var settings = SettingsWindowController(prefs: prefs, adapter: adapter, hotkeys: hotkeys)
+    private lazy var menuBar: MenuBar = MenuBar(symbol: "music.note", items: { [weak self] menu in
+        self?.addMenuItems(to: menu)
+    }, showSettings: { [weak self] in
+        self?.settings.show()
+    })
+    private lazy var settings: SettingsWindowController = SettingsWindowController(
+        prefs: prefs, adapter: adapter, hotkeys: hotkeys, menuBar: menuBar)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Opened straight from Downloads, macOS runs a read-only temporary copy of the app,
-        // where the media adapter can't be cleared to run.
-        if Bundle.main.bundlePath.contains("/AppTranslocation/") {
-            let alert = NSAlert()
-            alert.messageText = "Move MusicNotch to Applications"
-            alert.informativeText = "macOS runs apps opened straight from Downloads from a temporary copy, where MusicNotch can't read what's playing. Drag MusicNotch into your Applications folder, then open it from there."
-            alert.addButton(withTitle: "Quit")
-            NSApp.activate()
-            alert.runModal()
-            NSApp.terminate(nil)
-            return
-        }
+        // In the read-only temporary copy, the media adapter can't be cleared to run.
+        if AppShell.quitIfTranslocated(problem: "where MusicNotch can't read what's playing") { return }
         // In a demo, nothing reaches the real players or apps, even if the notch is clicked.
         let demo = DemoScene.current != nil
         let actions = NotchActions(
@@ -70,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             handOffSearch: { [weak self] query, target in if !demo { self?.mediaSearch.handOff(query, to: target) } },
             toggleMicrophone: { [weak self] in if !demo { self?.toggleMicrophone() } },
             toggleDeafen: { [weak self] bundleID in if !demo { self?.toggleDeafen(bundleID) } },
-            contextMenu: { [weak self] in self?.makeMenu() ?? NSMenu() }
+            contextMenu: { [weak self] in self?.menuBar.makeMenu() ?? NSMenu() }
         )
         let notch = NotchController(model: model, prefs: prefs, actions: actions)
         self.notch = notch
@@ -95,7 +91,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         prefs.onIdleOptionsChange = { [weak notch] in notch?.idleOptionsChanged() }
         model.onPlayingChange = { [weak notch] playing in notch?.playingChanged(playing) }
         notch.playingChanged(model.isPlayingAnything)
-        prefs.onMenuBarIconChange = { [weak self] in self?.updateStatusItem() }
         prefs.onSwipeOptionChange = { [weak notch] in notch?.updateSwipeMonitoring() }
         prefs.onFullScreenOptionChange = { [weak notch] in notch?.updateVisibility() }
         prefs.onHotkeysChange = { [weak self] in
@@ -141,7 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         terminationSignal.resume()
         self.terminationSignal = terminationSignal
 
-        updateStatusItem()
+        menuBar.install()
         if let scene = DemoScene.current {
             runDemo(scene)
         } else {
@@ -165,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         showSwipePermissionAlert()
     }
 
-    @objc private func showSwipePermissionAlert() {
+    private func showSwipePermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "“Hide while swiping” needs Input Monitoring"
         alert.informativeText = """
@@ -377,58 +372,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: nil)
     }
 
-    private func updateStatusItem() {
-        if prefs.showMenuBarIcon, statusItem == nil {
-            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            item.button?.image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "MusicNotch")
-            item.menu = makeMenu()
-            // Rebuilt each time it opens, so the permission warning is up to date.
-            item.menu?.delegate = self
-            statusItem = item
-        } else if !prefs.showMenuBarIcon, let item = statusItem {
-            NSStatusBar.system.removeStatusItem(item)
-            statusItem = nil
-        }
-    }
-
-    private func makeMenu() -> NSMenu {
-        let menu = NSMenu()
-        fill(menu)
-        return menu
-    }
-
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        fill(menu)
-    }
-
-    private func fill(_ menu: NSMenu) {
+    /// MusicNotch's items in the menu bar menu, which the notch's right-click menu shares;
+    /// AppShell adds Settings… and Quit.
+    private func addMenuItems(to menu: NSMenu) {
         if swipePermissionMissing {
-            let warning = NSMenuItem(title: "Allow Input Monitoring for “Hide while swiping”…",
-                                     action: #selector(showSwipePermissionAlert), keyEquivalent: "")
-            warning.target = self
+            let warning = NSMenuItem("Allow Input Monitoring for “Hide while swiping”…") { [weak self] in
+                self?.showSwipePermissionAlert()
+            }
             warning.image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: nil)
             menu.addItem(warning)
             menu.addItem(.separator())
         }
-        let hideItem = NSMenuItem(title: "Hide Notch", action: #selector(toggleNotchHidden), keyEquivalent: "")
-        hideItem.target = self
-        hideItem.state = prefs.isNotchHidden ? .on : .off
-        menu.addItem(hideItem)
-        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
-        settingsItem.target = self
-        menu.addItem(settingsItem)
-        menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit MusicNotch", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quitItem.target = NSApp
-        menu.addItem(quitItem)
-    }
-
-    @objc private func toggleNotchHidden() {
-        prefs.isNotchHidden.toggle()
-    }
-
-    @objc private func showSettings() {
-        settings.show()
+        menu.addItem(NSMenuItem("Hide Notch", isOn: prefs.isNotchHidden) { [weak self] in
+            self?.prefs.isNotchHidden.toggle()
+        })
     }
 }

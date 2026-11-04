@@ -181,7 +181,6 @@ final class Preferences {
         static let hideInFullScreen = "hideInFullScreen"
         static let openFromCameraOnly = "openFromCameraOnly"
         static let showOnExternalDisplays = "showOnExternalDisplays"
-        static let showMenuBarIcon = "showMenuBarIcon"
         static let lowResourceMode = "lowResourceMode"
         static let followLowPowerMode = "followLowPowerMode"
         static let accentColour = "accentColour"
@@ -203,7 +202,6 @@ final class Preferences {
     /// Unlike the display options, this one is set from the notch itself, so the panels stay.
     @ObservationIgnored var onNotchHiddenChange: (() -> Void)?
     @ObservationIgnored var onIdleOptionsChange: (() -> Void)?
-    @ObservationIgnored var onMenuBarIconChange: (() -> Void)?
     @ObservationIgnored var onSwipeOptionChange: (() -> Void)?
     @ObservationIgnored var onFullScreenOptionChange: (() -> Void)?
     @ObservationIgnored var onHotkeysChange: (() -> Void)?
@@ -295,12 +293,6 @@ final class Preferences {
             onDisplayOptionsChange?()
         }
     }
-    var showMenuBarIcon: Bool {
-        didSet {
-            defaults.set(showMenuBarIcon, forKey: Key.showMenuBarIcon)
-            onMenuBarIconChange?()
-        }
-    }
     var lowResourceMode: Bool {
         didSet {
             defaults.set(lowResourceMode, forKey: Key.lowResourceMode)
@@ -388,7 +380,6 @@ final class Preferences {
             // full screen, so hiding would also hide it whenever that browser plays anything.
             .flatMap(FullScreenHiding.init(rawValue:)) ?? .never
         showOnExternalDisplays = bool(Key.showOnExternalDisplays, false)
-        showMenuBarIcon = bool(Key.showMenuBarIcon, true)
         lowResourceMode = bool(Key.lowResourceMode, false)
         followLowPowerMode = bool(Key.followLowPowerMode, true)
         accentColour = (defaults.object(forKey: Key.accentColour) as? Int)

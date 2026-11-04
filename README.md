@@ -232,7 +232,7 @@ git clone https://github.com/doom1337hvh/MusicNotch.git
 cd MusicNotch && scripts/build.sh
 ```
 
-The app is built to `build/MusicNotch.app`. `scripts/build.sh --install` also copies it to `~/Applications` and opens it there.
+The app is built to `build/MusicNotch.app`. `scripts/build.sh --install` also copies it to `~/Applications` and opens it there. The menu bar icon, Settings window and build scripts come from [AppShell](https://github.com/doom1337hvh/AppShell), which Swift Package Manager fetches on the first build.
 
 Optionally, run `scripts/create-signing-cert.sh` once first. It makes a local code-signing certificate, so the permissions you grant survive rebuilds; otherwise each build is signed ad hoc and macOS treats it as a new app. To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
@@ -240,22 +240,23 @@ The clips above are recorded from the real app, acting out scripted scenes with 
 
 ### How it works
 
-`scripts/build.sh` compiles mediaremote-adapter (pinned to v0.7.7) together with MusicNotch's own additions in `Adapter/`, into a small framework that `/usr/bin/perl` loads:
+The build compiles mediaremote-adapter (pinned to v0.7.7) together with MusicNotch's own additions in `Adapter/`, into a small framework that `/usr/bin/perl` loads (`scripts/hooks/`):
 - `MusicNotchSessions.m` streams every app's media session, not only the one macOS treats as "now playing".
 - `MusicNotchSend.m` sends a command to a specific app. macOS delivers media commands only to its current "now playing" app, so it briefly overrides that choice, sends the command, and puts it back, all in under half a second. The override is cleared on every way out, and a marker file lets MusicNotch clear one left behind by a crash.
 
-The app itself is SwiftUI in an AppKit shell:
+The app itself is SwiftUI in an AppKit shell, with the menu bar icon and Settings window from AppShell:
 
 ```
 Sources/MusicNotch/
-  AppDelegate.swift, main.swift   app lifecycle, menu bar icon
+  AppDelegate.swift, main.swift   app lifecycle, menu bar menu
   DemoScene.swift                 made-up tracks and scripted scenes for the README's clips
   Media/                          adapter process, sessions parser, now-playing model,
                                   AppleScript (volume, shuffle, repeat)
   Notch/                          panels, geometry, views, animations, desktop switching
-  Settings/                       preferences, keyboard shortcuts, the Settings window
+  Settings/                       preferences, keyboard shortcuts, the Settings tabs
 Adapter/                          MusicNotch's additions to mediaremote-adapter
-scripts/                          build, release, signing certificate, icon, README clips
+scripts/                          build, release and signing certificate (AppShell's, run for
+                                  MusicNotch), the adapter build in hooks/, icon, README clips
 ```
 
 ## License

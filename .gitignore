@@ -1,6 +1,7 @@
 .build/
 build/
 dist/
+Packages/
 .DS_Store
 *.p12
 docs/demo.mp4
