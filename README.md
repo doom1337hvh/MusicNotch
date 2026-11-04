@@ -201,6 +201,7 @@ The rest costs nothing while idle:
 - **Nothing appears:** play something, then check **Settings → About → Media adapter**. If it says the adapter keeps exiting, your macOS version may have changed something MusicNotch relies on (see below). Make sure the app is in Applications, not Downloads.
 - **The buttons are dimmed for a browser tab:** your version of macOS doesn't let MusicNotch send commands to apps other than the current "Now Playing" one. Play/pause that tab once from the browser.
 - **Volume, shuffle or repeat don't respond:** allow MusicNotch under **System Settings → Privacy & Security → Automation**.
+- **Spotify shows a song it played earlier:** Spotify sometimes keeps telling macOS about an old song (Control Center shows it too), written as "Song • Artists" with no artwork. MusicNotch then asks Spotify itself what's playing, once it may control Spotify: use shuffle, repeat or the volume slider for Spotify once and allow it. The artwork stays blank meanwhile, because Spotify only gives it as a web address and MusicNotch doesn't go online.
 - **The notch no longer hides while you swipe between desktops:** macOS has stopped allowing Input Monitoring, which can happen after an update. MusicNotch warns about this when it starts, and in its ♪ menu. In **System Settings → Privacy & Security → Input Monitoring**, remove MusicNotch if it's listed, add it again with **+**, and turn it on; it starts working without a restart.
 - **A keyboard shortcut shows a warning sign:** another app already uses that shortcut. Pick another one.
 

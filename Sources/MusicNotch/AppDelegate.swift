@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var appVolume = AppVolume(scripts: scripts)
     private lazy var playbackModes = AppPlaybackModes(scripts: scripts)
     private lazy var mediaSearch = MediaSearch(scripts: scripts)
+    private lazy var spotifyTrackCheck = SpotifyTrackCheck(scripts: scripts)
     private let soundApps = SoundApps()
     private let microphone = Microphone()
     /// Deafening a call muted the microphone, so undeafening unmutes it.
@@ -74,13 +75,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.onPresenceChange = { [weak notch] visible in notch?.setVisible(visible) }
         model.onTrackChange = { [weak notch] in notch?.trackChanged() }
         playbackModes.spotifySnapshot = { [weak model] in model?.spotifySnapshot }
-        adapter.onUpdate = { [weak self, weak model, weak notch] update in
+        let receive: (SessionsUpdate?) -> Void = { [weak self, weak model, weak notch] update in
             model?.receive(update)
             // Repeating a Spotify song is timed from Spotify's position.
             if !demo { self?.playbackModes.follow(model?.spotifySnapshot) }
             // "Hide in full screen" can depend on which app is playing.
             notch?.updateVisibility()
         }
+        // Spotify can report a song it played earlier; see SpotifyTrackCheck.
+        adapter.onUpdate = { [weak self] update in
+            guard let self else { return }
+            receive(spotifyTrackCheck.correct(update))
+        }
+        spotifyTrackCheck.onCorrection = receive
         adapter.onTargetingUnavailable = { [weak model] in model?.canTargetApps = false }
         prefs.onAdapterOptionsChange = { [weak self] in
             guard let self else { return }
