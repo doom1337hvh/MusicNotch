@@ -202,26 +202,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var demoSince = Date()
 
     /// For the README's clips (`DemoScene`): made-up tracks in place of the adapter's, then
-    /// the scene's steps. The start time (`CACurrentMediaTime`) goes to the file named by
-    /// `-demoClock`, so the recorder can line up its drawn pointer.
+    /// the scene's steps, timed by AppShell's `Demo` so the recorder can line up its drawn
+    /// pointer. Settings plays its own clip, opened by the menu bar.
     private func runDemo(_ scene: DemoScene) {
         demoTrack = scene.firstTrack
         demoElapsed = DemoScene.tracks[demoTrack].elapsed
         showDemoTrack(scene)
-        if scene == .settings { settings.show() }
-        Task { [weak self] in
-            // Gives the recorder time to start capturing first.
-            try? await Task.sleep(for: .seconds(2.6))
-            let start = CACurrentMediaTime()
-            if let clock = UserDefaults.standard.string(forKey: "demoClock") {
-                try? String(start).write(toFile: clock, atomically: true, encoding: .utf8)
-            }
-            for (time, step) in scene.steps {
-                let wait = start + time - CACurrentMediaTime()
-                if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-                self?.runDemoStep(step, in: scene)
-            }
+        guard scene != .settings else { return }
+        let steps: [(time: TimeInterval, run: @MainActor () -> Void)] = scene.steps.map { time, step in
+            (time, { @MainActor [weak self] in self?.runDemoStep(step, in: scene) })
         }
+        Demo.play(steps)
     }
 
     private func runDemoStep(_ step: DemoStep, in scene: DemoScene) {
@@ -241,10 +232,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.seekOptimistically(to: demoElapsed)
         case .select(let sessionID):
             model.pin(sessionID)
-        case .settingsTab(let index):
-            // In front, so the window looks active.
-            settings.show()
-            settings.selectTab(index)
         case .microphone(let muted):
             model.isMicrophoneMuted = muted
         case .deafen(let deafened):

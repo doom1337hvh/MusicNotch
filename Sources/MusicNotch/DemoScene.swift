@@ -1,10 +1,10 @@
 import CoreGraphics
 import Foundation
 
-/// The README's clips, recorded by scripts/make-video.swift. Launched with `-demo <scene>`,
-/// MusicNotch shows made-up tracks instead of what's playing and acts out the scene's
-/// `steps` with its real views and animations. It doesn't start the media adapter, change any
-/// settings, or send anything to the real players.
+/// The README's clips, recorded by scripts/record-clips.sh from the list in scripts/clips.jsonc.
+/// Launched with `-demo <scene>`, MusicNotch shows made-up tracks instead of what's playing and
+/// acts out the scene's `steps` with its real views and animations. It doesn't start the media
+/// adapter, change any settings, or send anything to the real players.
 enum DemoScene: String {
     /// The README's main video: hover, pause, search, a new track.
     case tour
@@ -18,7 +18,8 @@ enum DemoScene: String {
     /// A call (Teams) with the music paused behind it; the microphone muted, then the call deafened.
     case sound
     case newTrack = "new-track"
-    case settings
+    /// Settings, which clicks through its tabs by itself (AppShell's `Demo.settingsTabs`).
+    case settings = "settings-tabs"
 
     /// The scene asked for on the command line, if any. (`-demo tour` lands in UserDefaults'
     /// argument domain, which is never saved.)
@@ -78,8 +79,8 @@ enum DemoScene: String {
         }, electedBundleID: main.id)
     }
 
-    /// The scene, in seconds from its start. scripts/make-video.swift draws the pointer to
-    /// match, so keep the two in step.
+    /// The scene, in seconds from its start. scripts/clips.jsonc has the pointer to match, so
+    /// keep the two in step.
     var steps: [(time: Double, step: DemoStep)] {
         switch self {
         case .tour:
@@ -113,8 +114,7 @@ enum DemoScene: String {
         case .newTrack:
             [(1.0, .track(2))]
         case .settings:
-            [(1.4, .settingsTab(1)), (2.8, .settingsTab(2)), (4.2, .settingsTab(3)), (5.6, .settingsTab(5)),
-             (7.0, .settingsTab(6))]
+            []
         }
     }
 
@@ -235,7 +235,6 @@ enum DemoStep {
     case search(text: String, results: [SearchResult]?)
     /// As if a result was chosen: the search closes, and the notch with it.
     case closeSearch
-    case settingsTab(Int)
     /// The sound scene's buttons.
     case microphone(muted: Bool)
     case deafen(Bool)

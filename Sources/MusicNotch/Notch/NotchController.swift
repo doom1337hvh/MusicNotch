@@ -855,7 +855,7 @@ private final class NotchPanelController {
             state.modesBundleID = model.snapshot?.bundleID
             state.modes = modes
         // The app delegate changes what's playing, and Settings.
-        case .playing, .track, .select, .settingsTab, .microphone, .deafen: break
+        case .playing, .track, .select, .microphone, .deafen: break
         }
     }
 

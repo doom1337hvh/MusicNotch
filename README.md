@@ -237,7 +237,7 @@ The app is built to `build/MusicNotch.app`. `scripts/build.sh --install` also co
 
 Optionally, run `scripts/create-signing-cert.sh` once first. It makes a local code-signing certificate, so the permissions you grant survive rebuilds; otherwise each build is signed ad hoc and macOS treats it as a new app. To make a release, see [docs/RELEASING.md](docs/RELEASING.md).
 
-The clips above are recorded from the real app, acting out scripted scenes with made-up tracks. After a build, `swift scripts/make-video.swift` records them all again into `docs/demo.gif` and `docs/clips` (plus `docs/demo.mp4` for sharing); name scenes to record just those. It needs the Screen Recording permission and a MacBook with a notch.
+The clips above are recorded from the real app, acting out scripted scenes with made-up tracks. After a build, `scripts/record-clips.sh` records them all again into `docs/demo.gif` and `docs/clips` (plus `docs/demo.mp4` for sharing); name scenes to record just those. The scenes are listed in `scripts/clips.jsonc`, and the recorder comes from AppShell. It needs the Screen Recording permission, a MacBook with a notch, and a normal desktop in front rather than a full-screen app.
 
 ### How it works
 

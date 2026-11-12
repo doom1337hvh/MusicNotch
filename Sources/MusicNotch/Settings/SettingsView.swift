@@ -65,11 +65,6 @@ final class SettingsWindowController {
     func show() {
         window.show()
     }
-
-    /// Switches to a tab, for a demo clip (`DemoScene`).
-    func selectTab(_ index: Int) {
-        window.selectTab(index)
-    }
 }
 
 /// General's own section, below Launch at login and the menu bar icon.

@@ -1,0 +1,83 @@
+// The README's clips, recorded from the built app by scripts/record-clips.sh (AppShell's
+// recorder; its record-clips.swift describes every option). Each scene's steps are in
+// Sources/MusicNotch/DemoScene.swift, and the pointer here follows them, so keep the two in step.
+{
+  // The defaults, but with the bars always moving, and nothing (a full-screen app, the menu bar
+  // icon) in the way.
+  "settings": {
+    "openAnimation": 0, "spaceSwitchAnimation": 1, "equalizerAnimation": 0, "notchStyle": 1,
+    "notchOpenTrigger": 0, "showBesideNotch": true, "showTrackPeek": true, "showShuffleRepeat": true,
+    "showSearch": true, "showArtwork": true, "showProgressBar": true, "lowResourceMode": false,
+    "hideDuringSwipes": false, "hideInFullScreen": 0, "showMenuBarIcon": false, "settingsTab": 0,
+    "updateBatching": 150, "openFromCameraOnly": true, "clickArtworkOpensApp": true,
+    "showOnExternalDisplays": false, "notchTheme": 1, "accentColour": 0, "followLowPowerMode": false,
+  },
+  "menuBarIcons": ["battery.75percent", "wifi", "music.note"],
+
+  // Points from the top middle of the screen. Compact, the default style: the camera area
+  // (4, 15), the controls row at y 62 (shuffle -2, play 47, repeat 96, search 125, volume 155,
+  // for Music or Spotify), the first search result (-40, 101), and for an app on a call,
+  // microphone (60, 62) and deafen (88, 62). Full: the progress bar at y 123 from x -124 to 124,
+  // the controls row at y 161 (search -157, shuffle -108, play 0, repeat 108), and the app icons
+  // beside the camera at y 16, 22 points apart (with eight apps: YouTube -153, Spotify -175,
+  // Teams 175).
+  "scenes": [
+    {
+      "name": "tour", "tour": true, "area": "notch", "length": 13.0, "height": 300,
+      "pointer": [[-1, 250, 236], [0.4, 250, 236], [1.2, 4, 15], [2.1, 4, 15], [2.8, 47, 62], [4.9, 47, 62],
+                  [5.7, 125, 62], [6.4, 125, 62], [7.0, 150, 75], [8.2, 150, 75], [8.9, -40, 101],
+                  [9.4, -40, 101], [10.4, 250, 236]],
+      "clicks": [3.0, 4.6, 6.2, 9.2],
+    },
+    { "name": "closed", "area": "notch", "length": 4.8, "height": 110 },
+    {
+      "name": "minimal", "area": "notch", "length": 5.2, "height": 130,
+      "pointer": [[-1, 250, 92], [0.3, 250, 92], [1.1, 4, 15], [1.6, 4, 15], [2.2, 103, 16], [2.8, 103, 16],
+                  [3.8, 250, 92]],
+      "clicks": [2.5],
+    },
+    {
+      "name": "compact", "area": "notch", "length": 6.4, "height": 160,
+      "pointer": [[-1, 250, 120], [0.3, 250, 120], [1.1, 4, 15], [1.6, 4, 15], [2.4, 47, 62], [4.6, 47, 62],
+                  [5.4, 250, 120]],
+      "clicks": [2.8, 4.2],
+    },
+    {
+      "name": "full", "area": "notch", "length": 8.2,
+      "pointer": [[-1, 250, 224], [0.3, 250, 224], [1.1, 4, 15], [1.7, 4, 15], [2.6, -30, 123],
+                  [2.8, -30, 123], [3.8, 55, 123], [3.9, 55, 123], [4.7, -108, 161], [5.2, -108, 161],
+                  [5.6, 108, 161], [6.2, 108, 161], [7.0, 250, 224]],
+      "clicks": [5.0, 5.9],
+      "drags": [[2.75, 3.9]],
+    },
+    {
+      "name": "sources", "area": "notch", "length": 8.4, "height": 160,
+      "pointer": [[-1, 250, 120], [0.3, 250, 120], [1.1, 4, 15], [1.7, 4, 15], [2.6, -153, 16],
+                  [3.4, -153, 16], [4.2, 175, 16], [5.0, 175, 16], [5.8, -175, 16], [6.6, -175, 16],
+                  [7.4, 250, 120]],
+      "clicks": [3.0, 4.6, 6.2],
+    },
+    {
+      "name": "search", "area": "notch", "length": 8.6,
+      "pointer": [[-1, 250, 224], [0.3, 250, 224], [1.1, 4, 15], [1.4, 4, 15], [2.1, 125, 62],
+                  [2.7, 125, 62], [3.3, 150, 75], [4.3, 150, 75], [4.9, -40, 101], [5.5, -40, 101],
+                  [6.4, 250, 224]],
+      "clicks": [2.4, 5.2],
+    },
+    {
+      "name": "sound", "area": "notch", "length": 7.0, "height": 160,
+      "pointer": [[-1, 250, 120], [0.3, 250, 120], [1.1, 4, 15], [1.7, 4, 15], [2.5, 60, 62],
+                  [3.0, 60, 62], [3.9, 88, 62], [4.4, 88, 62], [5.4, 250, 120]],
+      "clicks": [2.8, 4.2],
+    },
+    { "name": "new-track", "area": "notch", "length": 4.6, "height": 140 },
+    // Settings, every setting at its default, clicking through the tabs by itself.
+    {
+      "name": "settings", "demo": "settings-tabs", "area": "window",
+      "settings": {
+        "equalizerAnimation": 1, "hideInFullScreen": 0, "showMenuBarIcon": true, "followLowPowerMode": true,
+        "notchStyle": 1, "notchTheme": 1,
+      },
+    },
+  ],
+}
